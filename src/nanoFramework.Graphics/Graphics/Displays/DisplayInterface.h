@@ -24,6 +24,15 @@ struct DisplayInterfaceConfig
         } Spi;
         struct
         {
+            CLR_UINT8 spiBus;
+            CLR_INT32 chipSelect;
+            CLR_INT32 reset;
+            CLR_INT32 backLight;
+            // No DataCommand pin - QSPI panels (CO5300, AXS15231B, RM67162, ...) encode
+            // command vs data in the SPI transaction's command byte itself.
+        } Qspi;
+        struct
+        {
             CLR_INT8 i2cBus;
             CLR_INT8 address;
             CLR_INT8 fastMode;
@@ -68,6 +77,14 @@ struct DisplayInterfaceConfig
         CLR_UINT8 Brightness;
         CLR_UINT8 DefaultOrientation;
         CLR_UINT8 SetWindowType;
+        // ---------------------------------------------------------------------
+        // QSPI display extensions. Populated by the managed GraphicDriver descriptor;
+        // ignored when BusType == 0 (the standard SPI path).
+        // ---------------------------------------------------------------------
+        CLR_UINT8 BusType;                  // 0 = Spi (default, with DC pin), 1 = Qspi (hybrid 1-line cmd/addr, 4-line data).
+        CLR_UINT8 QspiRegisterWriteCommand; // SPI cmd byte that prefixes register-write transactions (0x02 for CO5300).
+        CLR_UINT8 QspiMemoryWriteCommand;   // SPI cmd byte that prefixes memory-write (pixel) transactions (0x32 for CO5300).
+        CLR_UINT32 QspiMemoryWriteAddress;  // 24-bit address phase that accompanies the memory-write (0x003C00 for CO5300).
     } GenericDriverCommands;
 };
 
