@@ -312,6 +312,19 @@
             }
         },
         {
+            "name": "ESP32_S3_BLE_QSPI",
+            "inherits": [
+                "xtensa-esp32s3-preset",
+                "user-tools-repos",
+                "user-prefs"
+            ],
+            "hidden": false,
+            "cacheVariables": {
+                "TARGET_NAME": "${presetName}",
+                "NF_TARGET_DEFCONFIG": "targets/ESP32/defconfig/ESP32_S3_BLE_QSPI_defconfig"
+            }
+        },
+        {
             "name": "ESP32_S3_ALL",
             "inherits": [
                 "xtensa-esp32s3-preset",
@@ -699,6 +712,12 @@
             "name": "ESP32_S3_BLE_UART",
             "displayName": "ESP32_S3_BLE_UART",
             "configurePreset": "ESP32_S3_BLE_UART"
+        },
+        {
+            "inherits": "base-user",
+            "name": "ESP32_S3_BLE_QSPI",
+            "displayName": "ESP32_S3_BLE_QSPI",
+            "configurePreset": "ESP32_S3_BLE_QSPI"
         },
         {
             "inherits": "base-user",
