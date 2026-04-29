@@ -48,6 +48,16 @@ choice GRAPHICS_DISPLAY_INTERFACE_CHOICE
 config GRAPHICS_IFACE_SPI
     bool "SPI to Display"
 
+config GRAPHICS_IFACE_QSPI
+    bool "Hybrid QSPI to Display (1-line cmd, 1-line addr, 4-line data)"
+    help
+        Selects the Qspi_To_Display.cpp DisplayInterface, which drives
+        flash-style hybrid-QSPI AMOLED panels (CO5300, AXS15231B,
+        RM67162, SH8601A, ...). Single-line command + single-line
+        24-bit address + quad-line memory-write data via ESP-IDF's
+        SPI_TRANS_MODE_QIO transactions. No DC pin required - the
+        panel discriminates command vs data via the cmd byte itself.
+
 config GRAPHICS_IFACE_DSI_VIDEO
     bool "DSI Video Mode"
 
@@ -56,6 +66,7 @@ endchoice
 config GRAPHICS_DISPLAY_INTERFACE
     string
     default "Spi_To_Display.cpp"                if GRAPHICS_IFACE_SPI
+    default "Qspi_To_Display.cpp"               if GRAPHICS_IFACE_QSPI
     default "DSI_To_Display_Video_Mode.cpp"     if GRAPHICS_IFACE_DSI_VIDEO
 
 choice TOUCHPANEL_DRIVER
