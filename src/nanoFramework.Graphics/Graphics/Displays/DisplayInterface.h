@@ -24,10 +24,15 @@ struct DisplayInterfaceConfig
         } Spi;
         struct
         {
-            CLR_UINT8 spiBus;
-            CLR_INT32 chipSelect;
-            CLR_INT32 reset;
-            CLR_INT32 backLight;
+            CLR_UINT8 spiBus;             // ESP32 SPI host index (0 = SPI2_HOST, 1 = SPI3_HOST). Other hosts: future.
+            CLR_INT32 chipSelect;         // CS GPIO.
+            CLR_INT32 sclk;               // SPI clock GPIO.
+            CLR_INT32 dataLine0;          // QSPI data line 0 (also MOSI in single-line mode).
+            CLR_INT32 dataLine1;          // QSPI data line 1.
+            CLR_INT32 dataLine2;          // QSPI data line 2 (data2 / quadwp).
+            CLR_INT32 dataLine3;          // QSPI data line 3 (data3 / quadhd).
+            CLR_INT32 reset;              // Display reset GPIO. -1 = no hardware reset (chip is software-reset only).
+            CLR_INT32 backLight;          // Backlight enable GPIO. -1 = software-controlled brightness via panel register.
             // No DataCommand pin - QSPI panels (CO5300, AXS15231B, RM67162, ...) encode
             // command vs data in the SPI transaction's command byte itself.
         } Qspi;
