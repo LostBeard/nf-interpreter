@@ -130,27 +130,13 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
     // is the dedicated QSPI display path that bypasses nanoSPI for the bus level.
 
 #if QSPI_HOST_ESP_IDF
-    // ESP32 SPI bus configuration - all 4 data lines + clock + CS.
-    // Pin assignments come from the target's CMake-time defaults via the standard nanoSPI
-    // pin map; this driver assumes the bus has not yet been initialized for this host.
+    // ESP32 SPI bus configuration - all 4 data lines + clock + CS, all from the descriptor.
     spi_bus_config_t buscfg = {0};
-    // The current DisplayInterfaceConfig.Qspi struct does not yet carry per-line pin numbers
-    // because the standard nanoSPI binding configures them via SetPinFunction. For the QSPI
-    // driver we need access to all four data lines. The bus index supplied in config selects
-    // which ESP32 SPI host (SPI2 or SPI3); pins come from target_system_device_spi_config.cpp.
-    // Once the polymorphic DisplayInterface lands, the four pin numbers + CS + SCLK can be
-    // brought into the union directly.
-    //
-    // For now: read pin assignments from a target-local helper that the firmware fills in.
-    extern void Qspi_GetDisplayPins(uint8_t spiHost, int *clk, int *cs, int *d0, int *d1, int *d2, int *d3);
-    int clk, cs, d0, d1, d2, d3;
-    Qspi_GetDisplayPins(config.Qspi.spiBus, &clk, &cs, &d0, &d1, &d2, &d3);
-
-    buscfg.sclk_io_num = clk;
-    buscfg.mosi_io_num = d0;
-    buscfg.miso_io_num = d1;
-    buscfg.data2_io_num = d2;
-    buscfg.data3_io_num = d3;
+    buscfg.sclk_io_num = config.Qspi.sclk;
+    buscfg.mosi_io_num = config.Qspi.dataLine0;
+    buscfg.miso_io_num = config.Qspi.dataLine1;
+    buscfg.data2_io_num = config.Qspi.dataLine2;
+    buscfg.data3_io_num = config.Qspi.dataLine3;
     buscfg.max_transfer_sz = QSPI_MAX_TRANSFER_BYTES;
     buscfg.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_QUAD;
 
@@ -166,7 +152,7 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
     spi_device_interface_config_t devcfg = {0};
     devcfg.clock_speed_hz = 40 * 1000 * 1000; // CO5300 datasheet allows up to 80 MHz; start at 40 for first-light, raise after.
     devcfg.mode = 0;
-    devcfg.spics_io_num = cs;
+    devcfg.spics_io_num = config.Qspi.chipSelect;
     devcfg.queue_size = 4;
     devcfg.flags = SPI_DEVICE_HALFDUPLEX; // QSPI displays are unidirectional - we only ever write.
 
