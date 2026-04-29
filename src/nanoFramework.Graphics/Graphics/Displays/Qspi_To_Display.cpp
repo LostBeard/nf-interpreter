@@ -25,6 +25,7 @@
 
 #include <nanoPAL.h>
 #include <target_platform.h>
+#include <string.h>
 
 // ESP32-IDF SPI master driver (the only currently-supported QSPI host platform).
 // Future ports for other hosts add their own #if guards here.
@@ -72,7 +73,8 @@ static void swap_buffers()
 // Used for every register write and for SetColumnAddress / SetRowAddress.
 static esp_err_t qspi_send_register(uint8_t reg, const uint8_t *data, size_t dataLen)
 {
-    spi_transaction_ext_t t = {0};
+    spi_transaction_ext_t t;
+    memset(&t, 0, sizeof(t));
     t.base.flags = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR;
     t.command_bits = 8;
     t.address_bits = 24;
@@ -87,7 +89,8 @@ static esp_err_t qspi_send_register(uint8_t reg, const uint8_t *data, size_t dat
 // `firstChunk` controls whether to issue the cmd/addr (true on the first chunk, false on continuations).
 static esp_err_t qspi_send_pixel_chunk(const uint8_t *data, size_t dataLen, bool firstChunk)
 {
-    spi_transaction_ext_t t = {0};
+    spi_transaction_ext_t t;
+    memset(&t, 0, sizeof(t));
     if (firstChunk)
     {
         t.base.flags = SPI_TRANS_MODE_QIO | SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR | SPI_TRANS_CS_KEEP_ACTIVE;
@@ -112,9 +115,8 @@ static esp_err_t qspi_send_pixel_chunk(const uint8_t *data, size_t dataLen, bool
 // the driver releases CS at the end of a pixel burst.
 static esp_err_t qspi_release_cs()
 {
-    spi_transaction_t t = {0};
-    t.flags = 0;
-    t.length = 0;
+    spi_transaction_t t;
+    memset(&t, 0, sizeof(t));
     return spi_device_polling_transmit(s_qspiDevice, &t);
 }
 
@@ -131,7 +133,8 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
 
 #if QSPI_HOST_ESP_IDF
     // ESP32 SPI bus configuration - all 4 data lines + clock + CS, all from the descriptor.
-    spi_bus_config_t buscfg = {0};
+    spi_bus_config_t buscfg;
+    memset(&buscfg, 0, sizeof(buscfg));
     buscfg.sclk_io_num = config.Qspi.sclk;
     buscfg.mosi_io_num = config.Qspi.dataLine0;
     buscfg.miso_io_num = config.Qspi.dataLine1;
@@ -149,7 +152,8 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
         return;
     }
 
-    spi_device_interface_config_t devcfg = {0};
+    spi_device_interface_config_t devcfg;
+    memset(&devcfg, 0, sizeof(devcfg));
     devcfg.clock_speed_hz = 40 * 1000 * 1000; // CO5300 datasheet allows up to 80 MHz; start at 40 for first-light, raise after.
     devcfg.mode = 0;
     devcfg.spics_io_num = config.Qspi.chipSelect;
