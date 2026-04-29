@@ -36,6 +36,7 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "target_qspi_display_config.h" // target-local pin map - see header for migration plan
 static const char *QSPI_TAG = "nf_qspi_disp";
 #else
 #error "Qspi_To_Display.cpp currently only supports ESP-IDF hosts; add a port for your platform."
@@ -122,27 +123,26 @@ static esp_err_t qspi_release_cs()
 void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
 {
     g_DisplayInterfaceConfig = config;
-    s_lcdReset = config.Qspi.reset;
-    s_lcdBacklight = config.Qspi.backLight;
-
-    // Note: nf-interpreter's standard SPI binding (nanoSPI) does not currently expose quad-line
-    // bus init, so we go directly to ESP-IDF's spi_master here. Once nf-interpreter's nanoSPI
-    // gains quad pin plumbing, this path can be refactored to use it - until then, this driver
-    // is the dedicated QSPI display path that bypasses nanoSPI for the bus level.
+    // Until QspiConfiguration + NativeInitQspi land, the data line + sclk pins come from a
+    // target-local header rather than the descriptor. The descriptor still carries reset /
+    // backlight (via the existing SpiConfiguration union member). Long-term, all pins move
+    // back into the descriptor's Qspi struct.
+    s_lcdReset = (QSPI_DISPLAY_RST >= 0) ? QSPI_DISPLAY_RST : config.Spi.reset;
+    s_lcdBacklight = (QSPI_DISPLAY_BL >= 0) ? QSPI_DISPLAY_BL : config.Spi.backLight;
 
 #if QSPI_HOST_ESP_IDF
-    // ESP32 SPI bus configuration - all 4 data lines + clock + CS, all from the descriptor.
+    // ESP32 SPI bus configuration - all 4 data lines + clock from the target header.
     spi_bus_config_t buscfg;
     memset(&buscfg, 0, sizeof(buscfg));
-    buscfg.sclk_io_num = config.Qspi.sclk;
-    buscfg.mosi_io_num = config.Qspi.dataLine0;
-    buscfg.miso_io_num = config.Qspi.dataLine1;
-    buscfg.data2_io_num = config.Qspi.dataLine2;
-    buscfg.data3_io_num = config.Qspi.dataLine3;
+    buscfg.sclk_io_num = QSPI_DISPLAY_SCLK;
+    buscfg.mosi_io_num = QSPI_DISPLAY_D0;
+    buscfg.miso_io_num = QSPI_DISPLAY_D1;
+    buscfg.data2_io_num = QSPI_DISPLAY_D2;
+    buscfg.data3_io_num = QSPI_DISPLAY_D3;
     buscfg.max_transfer_sz = QSPI_MAX_TRANSFER_BYTES;
     buscfg.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_QUAD;
 
-    spi_host_device_t host = (spi_host_device_t)(config.Qspi.spiBus + SPI2_HOST);
+    spi_host_device_t host = (spi_host_device_t)(QSPI_DISPLAY_HOST + SPI2_HOST);
 
     esp_err_t ret = spi_bus_initialize(host, &buscfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK)
@@ -155,7 +155,7 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
     memset(&devcfg, 0, sizeof(devcfg));
     devcfg.clock_speed_hz = 40 * 1000 * 1000; // CO5300 datasheet allows up to 80 MHz; start at 40 for first-light, raise after.
     devcfg.mode = 0;
-    devcfg.spics_io_num = config.Qspi.chipSelect;
+    devcfg.spics_io_num = QSPI_DISPLAY_CS;
     devcfg.queue_size = 4;
     devcfg.flags = SPI_DEVICE_HALFDUPLEX; // QSPI displays are unidirectional - we only ever write.
 
