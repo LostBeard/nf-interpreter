@@ -56,7 +56,6 @@ static CLR_INT16 s_lcdBacklight = -1;
 static uint8_t s_pingPong[2][QSPI_MAX_TRANSFER_BYTES] __attribute__((aligned(4)));
 static int s_currentBuffer = 0;
 static uint32_t s_bytesQueued = 0; // bytes currently staged in s_pingPong[s_currentBuffer]
-static bool s_inPixelBlock = false; // true between begin_pixels-equivalent and end_pixels
 
 static inline uint8_t *current_buffer()
 {
