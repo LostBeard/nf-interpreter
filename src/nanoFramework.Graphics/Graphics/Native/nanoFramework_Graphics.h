@@ -911,6 +911,13 @@ struct Library_nanoFramework_Graphics_nanoFramework_UI_GraphicDriver
     static const int FIELD___brightness = 15;
     static const int FIELD___defaultOrientation = 16;
     static const int FIELD___setWindowType = 17;
+    // QSPI hybrid-protocol descriptor fields (BusType + the three QSPI cmd/addr bytes).
+    // Backwards-compatible: legacy SPI panels leave BusType = 0 (Spi) and the
+    // Qspi* fields default to 0; the runtime never reads them in the SPI code path.
+    static const int FIELD___busType = 18;
+    static const int FIELD___qspiRegisterWriteCommand = 19;
+    static const int FIELD___qspiMemoryWriteCommand = 20;
+    static const int FIELD___qspiMemoryWriteAddress = 21;
 
     //--//
 };

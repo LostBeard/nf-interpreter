@@ -52,6 +52,14 @@ bool GraphicsMemory::GraphicsHeapLocation(
 
     // Get Largest free block in SPIRam
     CLR_UINT32 spiramMaxSize = heap_caps_get_largest_free_block(memoryCaps);
+    CLR_UINT32 spiramTotalFree = heap_caps_get_free_size(memoryCaps);
+
+    ESP_LOGI(
+        "GFXmem",
+        "Requested=%u SPIRAM_largest=%u SPIRAM_total_free=%u",
+        (unsigned)graphicsMemoryBlockSize,
+        (unsigned)spiramMaxSize,
+        (unsigned)spiramTotalFree);
 
     if (spiramMaxSize == 0)
     {
@@ -61,14 +69,26 @@ bool GraphicsMemory::GraphicsHeapLocation(
         memoryCaps ^= MALLOC_CAP_SPIRAM;
 
         spiramMaxSize = heap_caps_get_largest_free_block(memoryCaps);
+        ESP_LOGI("GFXmem", "Falling back to internal RAM, largest=%u", (unsigned)spiramMaxSize);
     }
 
     if (spiramMaxSize < graphicsMemoryBlockSize) // limit the size to what is available
     {
+        ESP_LOGI(
+            "GFXmem",
+            "Capping graphics heap from %u to %u (largest free block)",
+            (unsigned)graphicsMemoryBlockSize,
+            (unsigned)spiramMaxSize);
         graphicsMemoryBlockSize = spiramMaxSize;
     }
 
     graphicsStartingAddress = (CLR_UINT8 *)heap_caps_malloc(graphicsMemoryBlockSize, memoryCaps);
+
+    ESP_LOGI(
+        "GFXmem",
+        "Allocated graphics heap %u bytes at %p",
+        (unsigned)graphicsMemoryBlockSize,
+        graphicsStartingAddress);
 
     ASSERT(graphicsStartingAddress != NULL);
     graphicsEndingAddress = (CLR_UINT8 *)(graphicsStartingAddress + graphicsMemoryBlockSize);
