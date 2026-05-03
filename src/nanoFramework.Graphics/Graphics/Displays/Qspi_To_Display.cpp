@@ -132,6 +132,10 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
 
 #if QSPI_HOST_ESP_IDF
     // ESP32 SPI bus configuration - all 4 data lines + clock from the target header.
+    // CRITICAL: data4-7 must be -1 (not 0 from memset, which would be GPIO0 = BOOT
+    // button and conflict). Arduino_GFX uses GPIO_PINS flag to force GPIO matrix
+    // routing rather than IO_MUX defaults; we do the same since our pins (4-7, 11,
+    // 12) don't match the ESP32-S3 SPI2 IO_MUX defaults.
     spi_bus_config_t buscfg;
     memset(&buscfg, 0, sizeof(buscfg));
     buscfg.sclk_io_num = QSPI_DISPLAY_SCLK;
@@ -139,8 +143,12 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
     buscfg.miso_io_num = QSPI_DISPLAY_D1;
     buscfg.data2_io_num = QSPI_DISPLAY_D2;
     buscfg.data3_io_num = QSPI_DISPLAY_D3;
+    buscfg.data4_io_num = -1;
+    buscfg.data5_io_num = -1;
+    buscfg.data6_io_num = -1;
+    buscfg.data7_io_num = -1;
     buscfg.max_transfer_sz = QSPI_MAX_TRANSFER_BYTES;
-    buscfg.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_QUAD;
+    buscfg.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_GPIO_PINS;
 
     spi_host_device_t host = (spi_host_device_t)(QSPI_DISPLAY_HOST + SPI2_HOST);
 

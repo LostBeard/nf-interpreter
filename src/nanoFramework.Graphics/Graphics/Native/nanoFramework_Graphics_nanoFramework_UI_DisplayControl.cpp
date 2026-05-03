@@ -142,8 +142,13 @@ HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::
     {
         displayConfig.GenericDriverCommands.Width = graphicDriver[GraphicDriver::FIELD___width].NumericByRef().u4;
         displayConfig.GenericDriverCommands.Height = graphicDriver[GraphicDriver::FIELD___height].NumericByRef().u4;
+        // BUG FIX 2026-05-03: was reading BitsPerPixel from FIELD___initializationSequence
+        // (which is an array reference, not a numeric byte) - that produced garbage. The
+        // CO5300 panel needs RGB565 (BitsPerPixel = 16) per its managed descriptor; with
+        // a garbage value the framebuffer pixel format silently mismatched the panel and
+        // contributed to the dark-screen mystery on first-light.
         displayConfig.GenericDriverCommands.BitsPerPixel =
-            graphicDriver[GraphicDriver::FIELD___initializationSequence].NumericByRef().u1;
+            graphicDriver[GraphicDriver::FIELD___bitsPerPixel].NumericByRef().u1;
         displayConfig.GenericDriverCommands.InitializationSequence =
             graphicDriver[GraphicDriver::FIELD___initializationSequence].DereferenceArray();
         displayConfig.GenericDriverCommands.MemoryWrite =

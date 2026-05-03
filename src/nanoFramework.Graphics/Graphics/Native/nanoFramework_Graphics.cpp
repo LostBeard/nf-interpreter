@@ -869,6 +869,14 @@ static const CLR_RT_MethodHandler method_lookup[] =
     NULL,
     NULL,
     NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
     Library_nanoFramework_Graphics_nanoFramework_UI_Ink::SetInkRegion___STATIC__VOID__U4__I4__I4__I4__I4__I4__I4__I4__nanoFrameworkUIBitmap,
     Library_nanoFramework_Graphics_nanoFramework_UI_Ink::ResetInkRegion___STATIC__VOID,
     NULL,
@@ -1054,7 +1062,7 @@ static const CLR_RT_MethodHandler method_lookup[] =
 const CLR_RT_NativeAssemblyData g_CLR_AssemblyNative_nanoFramework_Graphics =
 {
     "nanoFramework.Graphics",
-    0x6A3F90DD,
+    0xA11D435D,
     method_lookup,
     { 100, 0, 0, 10 }
 };
