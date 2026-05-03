@@ -883,6 +883,9 @@ struct Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl
     NANOCLR_NATIVE_DECLARE(Clear___STATIC__VOID);
     NANOCLR_NATIVE_DECLARE(Write___STATIC__VOID__U2__U2__U2__U2__SZARRAY_U2);
     NANOCLR_NATIVE_DECLARE(Write___STATIC__VOID__STRING__U2__U2__U2__U2__nanoFrameworkUIFont__U4__U4);
+    NANOCLR_NATIVE_DECLARE(Sleep___STATIC__VOID);
+    NANOCLR_NATIVE_DECLARE(Wake___STATIC__VOID);
+    NANOCLR_NATIVE_DECLARE(SetBrightness___STATIC__VOID__U1);
     NANOCLR_NATIVE_DECLARE(NativeChangeOrientation___STATIC__BOOLEAN__nanoFrameworkUIDisplayOrientation);
     NANOCLR_NATIVE_DECLARE(
         NativeInitSpi___STATIC__U4__nanoFrameworkUISpiConfiguration__nanoFrameworkUIScreenConfiguration__U4);
