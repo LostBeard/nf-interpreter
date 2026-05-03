@@ -54,6 +54,9 @@ DisplayInterfaceConfig g_DisplayInterfaceConfig;
 static spi_device_handle_t s_qspiDevice = NULL;
 static CLR_INT16 s_lcdReset = -1;
 static CLR_INT16 s_lcdBacklight = -1;
+static CLR_INT16 s_lcdCs = -1; // Manual CS - matches Arduino_ESP32QSPI which sets spics_io_num = -1
+static inline void cs_low() { if (s_lcdCs >= 0) gpio_set_level((gpio_num_t)s_lcdCs, 0); }
+static inline void cs_high() { if (s_lcdCs >= 0) gpio_set_level((gpio_num_t)s_lcdCs, 1); }
 static uint8_t s_pingPong[2][QSPI_MAX_TRANSFER_BYTES] __attribute__((aligned(4)));
 static int s_currentBuffer = 0;
 static uint32_t s_bytesQueued = 0; // bytes currently staged in s_pingPong[s_currentBuffer]
@@ -71,53 +74,60 @@ static void swap_buffers()
 
 // Single-line command + single-line address + (optional) single-line data.
 // Used for every register write and for SetColumnAddress / SetRowAddress.
+// Matches Arduino_ESP32QSPI::writeC8D8 - device-level command_bits=8/addr_bits=24
+// fixed, so per-transaction we don't need SPI_TRANS_VARIABLE_*. Arduino sets
+// SPI_TRANS_MULTILINE_CMD | SPI_TRANS_MULTILINE_ADDR explicitly even though
+// neither QIO nor DIO is on - those flags are no-ops in single-line mode but
+// match the working vendor reference exactly.
 static esp_err_t qspi_send_register(uint8_t reg, const uint8_t *data, size_t dataLen)
 {
-    spi_transaction_ext_t t;
+    cs_low();
+    spi_transaction_t t;
     memset(&t, 0, sizeof(t));
-    t.base.flags = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR;
-    t.command_bits = 8;
-    t.address_bits = 24;
-    t.base.cmd = g_DisplayInterfaceConfig.GenericDriverCommands.QspiRegisterWriteCommand; // 0x02 for CO5300
-    t.base.addr = ((uint32_t)reg) << 8;                                                  // register byte in the high byte of the 24-bit addr
-    t.base.length = dataLen * 8;
-    t.base.tx_buffer = (dataLen > 0) ? data : NULL;
-    return spi_device_polling_transmit(s_qspiDevice, (spi_transaction_t *)&t);
+    t.flags = SPI_TRANS_MULTILINE_CMD | SPI_TRANS_MULTILINE_ADDR;
+    t.cmd = g_DisplayInterfaceConfig.GenericDriverCommands.QspiRegisterWriteCommand; // 0x02 for CO5300
+    t.addr = ((uint32_t)reg) << 8;                                                   // register byte in high byte of 24-bit addr
+    t.length = dataLen * 8;
+    t.tx_buffer = (dataLen > 0) ? data : NULL;
+    esp_err_t r = spi_device_polling_transmit(s_qspiDevice, &t);
+    cs_high();
+    return r;
 }
 
 // Quad-line data, single-line command + single-line address, used for memory-write pixel streams.
 // `firstChunk` controls whether to issue the cmd/addr (true on the first chunk, false on continuations).
+// On continuation chunks we override command_bits / address_bits to 0 via the ext struct -
+// device-level defaults are 8/24 so we MUST set them to 0 for cmd-less continuation.
+// Manual-CS pixel chunk send. Caller toggles CS via cs_low() before the first
+// chunk and cs_high() after the last chunk. Matches Arduino_ESP32QSPI::writePixels.
 static esp_err_t qspi_send_pixel_chunk(const uint8_t *data, size_t dataLen, bool firstChunk)
 {
-    spi_transaction_ext_t t;
-    memset(&t, 0, sizeof(t));
     if (firstChunk)
     {
-        t.base.flags = SPI_TRANS_MODE_QIO | SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR | SPI_TRANS_CS_KEEP_ACTIVE;
-        t.command_bits = 8;
-        t.address_bits = 24;
-        t.base.cmd = g_DisplayInterfaceConfig.GenericDriverCommands.QspiMemoryWriteCommand; // 0x32 for CO5300
-        t.base.addr = g_DisplayInterfaceConfig.GenericDriverCommands.QspiMemoryWriteAddress; // 0x003C00 for CO5300
+        spi_transaction_t t;
+        memset(&t, 0, sizeof(t));
+        t.flags = SPI_TRANS_MODE_QIO;
+        t.cmd = g_DisplayInterfaceConfig.GenericDriverCommands.QspiMemoryWriteCommand;   // 0x32 for CO5300
+        t.addr = g_DisplayInterfaceConfig.GenericDriverCommands.QspiMemoryWriteAddress;  // 0x003C00 for CO5300
+        t.length = dataLen * 8;
+        t.tx_buffer = data;
+        return spi_device_polling_transmit(s_qspiDevice, &t);
     }
     else
     {
-        t.base.flags = SPI_TRANS_MODE_QIO | SPI_TRANS_CS_KEEP_ACTIVE;
+        // Continuation chunks: same QIO transaction without re-issuing cmd/addr.
+        // device-level command_bits/address_bits are 8/24 fixed, so override per-transaction
+        // via VARIABLE_* flags + ext struct fields = 0 to skip those phases.
+        spi_transaction_ext_t t;
+        memset(&t, 0, sizeof(t));
+        t.base.flags = SPI_TRANS_MODE_QIO | SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR | SPI_TRANS_VARIABLE_DUMMY;
         t.command_bits = 0;
         t.address_bits = 0;
+        t.dummy_bits = 0;
+        t.base.length = dataLen * 8;
+        t.base.tx_buffer = data;
+        return spi_device_polling_transmit(s_qspiDevice, (spi_transaction_t *)&t);
     }
-    t.base.length = dataLen * 8;
-    t.base.tx_buffer = data;
-    return spi_device_polling_transmit(s_qspiDevice, (spi_transaction_t *)&t);
-}
-
-// CS-release-only transaction. The spi_master driver groups CS-keep-active transactions into
-// a single CS assertion; this issues an empty trailing transaction without CS_KEEP_ACTIVE so
-// the driver releases CS at the end of a pixel burst.
-static esp_err_t qspi_release_cs()
-{
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    return spi_device_polling_transmit(s_qspiDevice, &t);
 }
 
 void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
@@ -161,10 +171,20 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
 
     spi_device_interface_config_t devcfg;
     memset(&devcfg, 0, sizeof(devcfg));
-    devcfg.clock_speed_hz = 40 * 1000 * 1000; // CO5300 datasheet allows up to 80 MHz; start at 40 for first-light, raise after.
+    devcfg.command_bits = 8;     // matches Arduino vendor driver - device-level fixed
+    devcfg.address_bits = 24;    // matches Arduino vendor driver
+    devcfg.dummy_bits = 0;
+    devcfg.clock_speed_hz = 80 * 1000 * 1000; // Match Rust port (waveshare-watch-rs main.rs:243)
     devcfg.mode = 0;
-    devcfg.spics_io_num = QSPI_DISPLAY_CS;
-    devcfg.queue_size = 4;
+    // Manual CS to match Arduino_ESP32QSPI exactly - it uses spics_io_num=-1 and
+    // toggles the GPIO directly via CS_LOW/CS_HIGH macros. Hardware-CS with
+    // SPI_TRANS_CS_KEEP_ACTIVE was tried 2026-05-03 and the panel stayed dark even
+    // though the wire-level transactions completed - swap to manual CS for parity.
+    devcfg.spics_io_num = -1;
+    devcfg.queue_size = 1;       // matches Arduino vendor driver
+    devcfg.cs_ena_pretrans = 0;
+    devcfg.cs_ena_posttrans = 0;
+    devcfg.input_delay_ns = 0;
     devcfg.flags = SPI_DEVICE_HALFDUPLEX; // QSPI displays are unidirectional - we only ever write.
 
     ret = spi_bus_add_device(host, &devcfg, &s_qspiDevice);
@@ -173,6 +193,12 @@ void DisplayInterface::Initialize(DisplayInterfaceConfig &config)
         ESP_LOGE(QSPI_TAG, "spi_bus_add_device failed: %d", ret);
         return;
     }
+
+    // Manual CS pin (replaces hardware spics_io_num path). Matches Arduino_ESP32QSPI.
+    s_lcdCs = QSPI_DISPLAY_CS;
+    gpio_reset_pin((gpio_num_t)s_lcdCs);
+    gpio_set_direction((gpio_num_t)s_lcdCs, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)s_lcdCs, 1); // idle high
 
     // GPIOs - reset is a real pin (asserted to bring the panel out of POR), backlight on this
     // chip is software-controlled via register 0x51 so the pin field is typically -1.
@@ -332,6 +358,7 @@ void DisplayInterface::SendData16Windowed(
     s_bytesQueued = 0;
     CLR_UINT16 *startOfLine = data + (startY * stride) + startX;
 
+    cs_low();
     if (width == stride)
     {
         // Contiguous block - one big push, the chunker handles DMA-sized splits.
@@ -352,7 +379,7 @@ void DisplayInterface::SendData16Windowed(
         qspi_send_pixel_chunk(current_buffer(), s_bytesQueued, firstChunk);
         s_bytesQueued = 0;
     }
-    qspi_release_cs();
+    cs_high();
 }
 
 void DisplayInterface::FillData16(CLR_UINT16 fillValue, CLR_UINT32 fillLength)
@@ -369,6 +396,7 @@ void DisplayInterface::FillData16(CLR_UINT16 fillValue, CLR_UINT32 fillLength)
         fillBuf[i] = (uint16_t)((fillValue >> 8) | (fillValue << 8));
     }
 
+    cs_low();
     while (fillLength > 0)
     {
         size_t take = (fillLength < chunkPixels) ? fillLength : chunkPixels;
@@ -377,7 +405,7 @@ void DisplayInterface::FillData16(CLR_UINT16 fillValue, CLR_UINT32 fillLength)
         fillLength -= take;
     }
 
-    qspi_release_cs();
+    cs_high();
 }
 
 #endif // QSPI_TO_DISPLAY_

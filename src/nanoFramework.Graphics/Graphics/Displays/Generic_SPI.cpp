@@ -147,24 +147,33 @@ bool DisplayDriver::Initialize()
 
 void DisplayDriver::SetupDisplayAttributes()
 {
-    // Define the LCD/TFT resolution
-    if (g_DisplayInterfaceConfig.GenericDriverCommands.Width == 0)
-    {
-        Attributes.LongerSide = g_DisplayInterfaceConfig.Screen.width;
-    }
-    else
-    {
-        Attributes.LongerSide = g_DisplayInterfaceConfig.GenericDriverCommands.Width;
-    }
+    // Determine the panel's native dimensions, taking GraphicDriver.Width / .Height when
+    // the descriptor supplies them and falling back to the Screen.width / .height passed
+    // in via the ScreenConfiguration. The descriptor wins on conflict.
+    CLR_UINT32 nativeWidth = (g_DisplayInterfaceConfig.GenericDriverCommands.Width != 0)
+                                 ? g_DisplayInterfaceConfig.GenericDriverCommands.Width
+                                 : g_DisplayInterfaceConfig.Screen.width;
+    CLR_UINT32 nativeHeight = (g_DisplayInterfaceConfig.GenericDriverCommands.Height != 0)
+                                  ? g_DisplayInterfaceConfig.GenericDriverCommands.Height
+                                  : g_DisplayInterfaceConfig.Screen.height;
 
-    if (g_DisplayInterfaceConfig.GenericDriverCommands.Height == 0)
+    // CRITICAL: classify by actual numeric size, NOT by which-field-was-set. The original
+    // code unconditionally did `LongerSide = width` which only happened to be correct for
+    // landscape-native panels (width > height). For portrait-native panels like the
+    // Waveshare ESP32-S3-Touch-AMOLED-2.06 (CO5300, 410 x 502), width is the shorter side,
+    // and the inverted naming caused ChangeOrientation_Portrait to assign Attributes.Width
+    // = 502 / Height = 410 (transposed), which then made Screen_Flush's bounds-check on a
+    // full 410x502 framebuffer fail with `bitmap.height > heightMax` and silently send
+    // zero pixels to the panel.
+    if (nativeWidth >= nativeHeight)
     {
-        Attributes.ShorterSide = g_DisplayInterfaceConfig.Screen.height;
-        ;
+        Attributes.LongerSide = nativeWidth;
+        Attributes.ShorterSide = nativeHeight;
     }
     else
     {
-        Attributes.LongerSide = g_DisplayInterfaceConfig.GenericDriverCommands.Height;
+        Attributes.LongerSide = nativeHeight;
+        Attributes.ShorterSide = nativeWidth;
     }
 
     Attributes.PowerSave = PowerSaveState::NORMAL;
@@ -182,48 +191,50 @@ void DisplayDriver::SetupDisplayAttributes()
 
 bool DisplayDriver::ChangeOrientation(DisplayOrientation orientation)
 {
+    // Critical: Attributes.Width / Attributes.Height MUST be set unconditionally so that
+    // Screen_Flush + BitBlt have valid clamp bounds. Earlier this was only set inside
+    // the `if (OrientationXxx != NULL)` branch, which meant a panel descriptor that did
+    // not provide an orientation command array (e.g. CO5300 / QSPI panels that handle
+    // orientation via MADCTL in the InitializationSequence) ended up with Width=Height=0.
+    // Screen_Flush then clamped every flush region to 0x0 and silently sent zero pixels
+    // to the panel - which presented as a fully-dark display despite every init command
+    // appearing to succeed. Fix: set Width/Height first, then optionally process the
+    // orientation command if one was supplied.
     switch (orientation)
     {
         case DisplayOrientation::DisplayOrientation_Portrait:
+            Attributes.Height = Attributes.LongerSide;
+            Attributes.Width = Attributes.ShorterSide;
             if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait != NULL)
             {
-                Attributes.Height = Attributes.LongerSide;
-                Attributes.Width = Attributes.ShorterSide;
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait);
-                return true;
             }
-
-            break;
+            return true;
         case DisplayOrientation::DisplayOrientation_Portrait180:
+            Attributes.Height = Attributes.LongerSide;
+            Attributes.Width = Attributes.ShorterSide;
             if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait180 != NULL)
             {
-                Attributes.Height = Attributes.LongerSide;
-                Attributes.Width = Attributes.ShorterSide;
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait180);
-                return true;
             }
-
-            break;
+            return true;
         case DisplayOrientation::DisplayOrientation_Landscape:
+            Attributes.Height = Attributes.ShorterSide;
+            Attributes.Width = Attributes.LongerSide;
             if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape != NULL)
             {
-                Attributes.Height = Attributes.ShorterSide;
-                Attributes.Width = Attributes.LongerSide;
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape);
-                return true;
             }
-
-            break;
+            return true;
         case DisplayOrientation::DisplayOrientation_Landscape180:
             if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180 != NULL)
+            Attributes.Height = Attributes.ShorterSide;
+            Attributes.Width = Attributes.LongerSide;
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180 != NULL)
             {
-                Attributes.Height = Attributes.ShorterSide;
-                Attributes.Width = Attributes.LongerSide;
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180);
-                return true;
             }
-
-            break;
+            return true;
     }
 
     return false;
