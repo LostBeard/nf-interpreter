@@ -28,10 +28,16 @@ void ProcessCommand(CLR_RT_HeapBlock_Array *array)
     {
         cmd = array->GetElement(inc++);
         size = array->GetElement(inc++);
-        // This is a sleep instruction
+        // This is a sleep instruction.
+        // The sleep value is in the size byte; *cmd is the type marker
+        // (GraphicDriverCommandType_Sleep == 0). Multiplying by *cmd makes the
+        // delay always zero - panels that need a wake-from-sleep delay (e.g.
+        // CO5300's required ~120ms after SleepOut) never get it, so subsequent
+        // init commands hit a panel still in sleep state and the display stays
+        // dark even though every command appears to send successfully.
         if (*cmd == GraphicDriverCommandType::GraphicDriverCommandType_Sleep)
         {
-            OS_DELAY(*cmd * *size * 10);
+            OS_DELAY(*size * 10);
         }
         // This is the normal command
         else if (*cmd == GraphicDriverCommandType::GraphicDriverCommandType_Command)
