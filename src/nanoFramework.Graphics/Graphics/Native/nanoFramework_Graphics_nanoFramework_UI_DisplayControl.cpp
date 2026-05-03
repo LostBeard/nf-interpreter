@@ -71,6 +71,51 @@ HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::
     NANOCLR_NOCLEANUP_NOLABEL();
 }
 
+HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::Sleep___STATIC__VOID(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+    {
+        (void)stack;
+        // Runs the descriptor's PowerModeSleep command sequence (typically DISPOFF + SLPIN
+        // for MIPI DCS panels; CO5300 ships those plus the 20 ms / 120 ms settling delays).
+        // No-op if the descriptor doesn't populate PowerModeSleep.
+        g_DisplayDriver.PowerSave(PowerSaveState::SLEEP);
+    }
+    NANOCLR_NOCLEANUP_NOLABEL();
+}
+
+HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::Wake___STATIC__VOID(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+    {
+        (void)stack;
+        // Runs the descriptor's PowerModeNormal command sequence (typically SLPOUT + DISPON
+        // with the SLPOUT settling delay). After Wake the panel's DDRAM contents are intact
+        // but the rendered state may be stale - caller should repaint.
+        g_DisplayDriver.PowerSave(PowerSaveState::NORMAL);
+    }
+    NANOCLR_NOCLEANUP_NOLABEL();
+}
+
+// extern declarations to reach the same globals Generic_SPI.cpp / GC9A01_240x240_SPI.cpp use.
+// DisplayInterface.h declares g_DisplayInterface; the ::Config global lives next to the
+// per-panel driver TUs, so we re-extern it here rather than restructure the headers.
+extern DisplayInterfaceConfig g_DisplayInterfaceConfig;
+
+HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::SetBrightness___STATIC__VOID__U1(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+    {
+        // Sends the descriptor's Brightness command (e.g. CO5300 register 0x51) followed
+        // by the level byte. Range 0..255 - panel decides what those numbers mean. The
+        // existing DisplayDriver::DisplayBrightness clamps to 0..100 (percent semantics);
+        // bypass it and call SendCommand directly so callers get full byte resolution.
+        CLR_UINT8 level = stack.Arg0().NumericByRef().u1;
+        g_DisplayInterface.SendCommand(2, g_DisplayInterfaceConfig.GenericDriverCommands.Brightness, level);
+    }
+    NANOCLR_NOCLEANUP_NOLABEL();
+}
+
 HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::Clear___STATIC__VOID(CLR_RT_StackFrame &stack)
 {
     NANOCLR_HEADER();
