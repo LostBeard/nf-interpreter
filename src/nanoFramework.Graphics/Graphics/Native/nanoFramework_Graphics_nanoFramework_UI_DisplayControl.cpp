@@ -176,6 +176,17 @@ HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::
             (CLR_UINT8)graphicDriver[GraphicDriver::FIELD___defaultOrientation].NumericByRef().s4;
         displayConfig.GenericDriverCommands.SetWindowType =
             (CLR_UINT8)graphicDriver[GraphicDriver::FIELD___setWindowType].NumericByRef().s4;
+        // QSPI hybrid-protocol descriptor fields. Reading these for SPI panels is harmless
+        // (their value will be 0 and the SPI driver never references them). For QSPI panels
+        // (CO5300, AXS15231B, ...), these are the wire-level cmd/addr bytes the bus driver
+        // uses. Without these reads the QSPI driver was sending cmd=0xFF (uninitialized
+        // BSS) instead of cmd=0x02 and the panel rejected every transaction.
+        displayConfig.GenericDriverCommands.QspiRegisterWriteCommand =
+            graphicDriver[GraphicDriver::FIELD___qspiRegisterWriteCommand].NumericByRef().u1;
+        displayConfig.GenericDriverCommands.QspiMemoryWriteCommand =
+            graphicDriver[GraphicDriver::FIELD___qspiMemoryWriteCommand].NumericByRef().u1;
+        displayConfig.GenericDriverCommands.QspiMemoryWriteAddress =
+            graphicDriver[GraphicDriver::FIELD___qspiMemoryWriteAddress].NumericByRef().u4;
     }
 
     g_DisplayInterface.Initialize(displayConfig);
