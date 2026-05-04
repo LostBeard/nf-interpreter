@@ -121,6 +121,36 @@ HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_Bitmap::Flush___VOID(CLR
     NANOCLR_NOCLEANUP();
 }
 
+// AMOLED-style QSPI panels (CO5300, AXS15231B, RM67162, ...) snap any CASET / PASET
+// address window that is not even/odd aligned, leaving stale-pixel slivers at the
+// edges of partial flushes. Reverse-engineered by the waveshare-watch-rs author and
+// documented in SpawnWear's Notes/co5300-quirks.md. Apply the alignment here at the
+// Bitmap.Flush entry point so EVERY consumer of partial flush gets correct pixels
+// without having to know the quirk.
+//
+// Side effect: 1-px-wide elements at odd start coordinates become 2-px-wide. The
+// framework's drawing primitives operate at coarser scale (FillRectangle, DrawLine)
+// so this is acceptable in practice; a future refinement can gate the alignment on
+// a panel descriptor flag.
+static inline void AlignFlushBoundsForQspiPanels(
+    CLR_INT32 &screenX, CLR_INT32 &screenY,
+    CLR_INT32 &width, CLR_INT32 &height,
+    CLR_INT32 &srcX, CLR_INT32 &srcY)
+{
+    CLR_INT32 alignedX = screenX & ~1;
+    CLR_INT32 alignedY = screenY & ~1;
+    CLR_INT32 alignedRight = (screenX + width - 1) | 1;
+    CLR_INT32 alignedBottom = (screenY + height - 1) | 1;
+    // Shift the source-bitmap origin by the SAME delta so we sample the correct
+    // pixels that match the wider screen window.
+    srcX -= (screenX - alignedX);
+    srcY -= (screenY - alignedY);
+    screenX = alignedX;
+    screenY = alignedY;
+    width = alignedRight - alignedX + 1;
+    height = alignedBottom - alignedY + 1;
+}
+
 HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_Bitmap::Flush___VOID__I4__I4__I4__I4(CLR_RT_StackFrame &stack)
 {
     NANOCLR_HEADER();
@@ -131,15 +161,19 @@ HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_Bitmap::Flush___VOID__I4
     CLR_INT32 y = pArgs[1].NumericByRef().s4;
     CLR_INT32 width = pArgs[2].NumericByRef().s4;
     CLR_INT32 height = pArgs[3].NumericByRef().s4;
+    CLR_INT32 srcX = x;
+    CLR_INT32 srcY = y;
 
     CLR_GFX_Bitmap *bitmap;
 
     NANOCLR_CHECK_HRESULT(GetBitmap(stack, false, bitmap));
 
+    AlignFlushBoundsForQspiPanels(x, y, width, height, srcX, srcY);
+
     g_GraphicsDriver.Screen_Flush(
         *bitmap,
-        (CLR_UINT16)x,
-        (CLR_UINT16)y,
+        (CLR_UINT16)srcX,
+        (CLR_UINT16)srcY,
         (CLR_UINT16)width,
         (CLR_UINT16)height,
         (CLR_UINT16)x,
@@ -165,6 +199,8 @@ HRESULT Library_nanoFramework_Graphics_nanoFramework_UI_Bitmap::Flush___VOID__I4
     CLR_GFX_Bitmap *bitmap;
 
     NANOCLR_CHECK_HRESULT(GetBitmap(stack, false, bitmap));
+
+    AlignFlushBoundsForQspiPanels(screenX, screenY, width, height, srcX, srcY);
 
     g_GraphicsDriver.Screen_Flush(
         *bitmap,
