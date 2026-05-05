@@ -45,6 +45,11 @@ static const char *TAG = "SDCard";
 
 sdmmc_card_t *card;
 
+// 2026-05-04: surface SD-mount diagnostics through the wire-protocol debug
+// channel since CONFIG_LOG_DEFAULT_LEVEL_NONE=y silences ESP_LOG output.
+// Implementation in Target_System_IO_FileSystem_Diag.cpp.
+extern void Storage_DiagPrintf(const char *fmt, ...);
+
 //
 //  Unmount SD card ( MMC/SDIO or SPI)
 //
@@ -73,10 +78,12 @@ bool LogMountResult(esp_err_t errCode)
         if (errCode == ESP_FAIL)
         {
             ESP_LOGE(TAG, "Failed to mount filesystem. ");
+            Storage_DiagPrintf("[SDCard] mount failed: ESP_FAIL (FATFS f_mount said no valid volume)\r\n");
         }
         else
         {
             ESP_LOGE(TAG, "Failed to initialize the card (%s).  ", esp_err_to_name(errCode));
+            Storage_DiagPrintf("[SDCard] mount failed: errCode=0x%x (%s)\r\n", (unsigned int)errCode, esp_err_to_name(errCode));
         }
         return false;
     }
@@ -100,6 +107,8 @@ bool Storage_MountMMC(bool bit1Mode, int driveIndex)
     mountPoint[0] = '/';
 
     ESP_LOGI(TAG, "Initializing SDMMC%d SD card", driveIndex + 1);
+    Storage_DiagPrintf("[SDCard] Storage_MountMMC: drive=%c bit1Mode=%d driveIndex=%d\r\n",
+        mountPoint[1], (int)bit1Mode, driveIndex);
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 
@@ -207,6 +216,8 @@ bool Storage_MountSpi(int spiBus, uint32_t csPin, int driveIndex)
     mountPoint[0] = '/';
 
     ESP_LOGI(TAG, "Initializing SPI SD card");
+    Storage_DiagPrintf("[SDCard] Storage_MountSpi: spiBus=%d csPin=%d drive=%c host.slot=%d\r\n",
+        spiBus, (int)csPin, mountPoint[1], spiBus + SPI2_HOST);
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 

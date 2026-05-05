@@ -175,17 +175,6 @@ bool Esp32FlashDriver_Read(void *context, ByteAddress startAddress, unsigned int
     return true;
 }
 
-// 2026-05-05: deploy-ceiling diagnostic. Every write logs via the
-// wire-protocol debug channel (visible in nf-deploy.cs's captured runtime
-// output) with offset, size, esp_partition_write return code, and a
-// running cumulative byte counter. Lets us correlate "deploy reaches X
-// bytes then corrupts" against actual flash state.
-//
-// We use a C-callable shim because CLR_Debug::Printf is C++; the shim
-// lives in Target_BlockStorage_ESP32FlashDriver_Diag.cpp.
-extern void Esp32FlashDriver_DiagPrintf(const char *fmt, ...);
-static uint32_t s_cumWriteBytes = 0;
-
 bool Esp32FlashDriver_Write(
     void *context,
     ByteAddress startAddress,
@@ -201,30 +190,12 @@ bool Esp32FlashDriver_Write(
     // need to compute the address offset from the region (block) DEPLOYMENT block start address
     ByteAddress offsetAddress = startAddress - DEPLOYMENT_Region_StartAddress;
 
-    esp_err_t err = esp_partition_write(
-        g_pFlashDriver_partition, offsetAddress, (const void *)buffer, (size_t)numBytes);
-    s_cumWriteBytes += numBytes;
+    ESP_LOGI(TAG, "Writting  %dB @ %d\n", numBytes, offsetAddress);
 
-    // Log every write through the wire-protocol debug channel so
-    // nf-deploy.cs's captured runtime output shows exactly where in
-    // the deploy stream a failure (or last-successful write) occurs.
-    if (err == ESP_OK)
-    {
-        Esp32FlashDriver_DiagPrintf("[deploy-write] %u bytes @ offset %u  cum=%u  OK\r\n",
-            numBytes, offsetAddress, s_cumWriteBytes);
-    }
-    else
-    {
-        Esp32FlashDriver_DiagPrintf("[deploy-write] %u bytes @ offset %u  cum=%u  FAILED err=0x%x\r\n",
-            numBytes, offsetAddress, s_cumWriteBytes, (unsigned)err);
-    }
-
-    return err == ESP_OK;
+    // write buffer to partition
+    return (
+        esp_partition_write(g_pFlashDriver_partition, offsetAddress, (const void *)buffer, (size_t)numBytes) == ESP_OK);
 }
-
-// Reset the cumulative-write counter when the partition is erased (each
-// deploy starts with EraseBlock).
-static void Esp32FlashDriver_ResetWriteCounter(void) { s_cumWriteBytes = 0; }
 
 bool Esp32FlashDriver_IsBlockErased(void *context, ByteAddress blockAddress, unsigned int length)
 {
@@ -274,16 +245,11 @@ bool Esp32FlashDriver_IsBlockErased(void *context, ByteAddress blockAddress, uns
 bool Esp32FlashDriver_EraseBlock(void *context, ByteAddress address)
 {
     (void)context;
-    (void)address;
 
     // this implementation here assumes that with ESP32 erase operations are performed only in the DEPLOYMENT region
     // and for the full block so the offset it's 0 and the size corresponds to the partition size
 
-    Esp32FlashDriver_ResetWriteCounter();
-    esp_err_t err = esp_partition_erase_range(g_pFlashDriver_partition, 0, g_pFlashDriver_partition->size);
-    Esp32FlashDriver_DiagPrintf("[deploy-erase] partition erased size=%u err=0x%x\r\n",
-        (unsigned)g_pFlashDriver_partition->size, (unsigned)err);
-    return err == ESP_OK;
+    return (esp_partition_erase_range(g_pFlashDriver_partition, 0, g_pFlashDriver_partition->size) == ESP_OK);
 }
 
 bool Esp32FlashDriver_GetMemoryMappedAddress(
