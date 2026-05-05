@@ -35,6 +35,7 @@ set(System.IO.FileSystem_SRCS
     nanoPAL_FileSystem.cpp
 
     Target_System_IO_FileSystem.c
+    Target_System_IO_FileSystem_Diag.cpp
     target_FileSystem.cpp
 )
 
