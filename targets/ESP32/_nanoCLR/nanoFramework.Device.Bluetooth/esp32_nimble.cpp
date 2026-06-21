@@ -8,6 +8,7 @@
 #include "Esp32_DeviceMapping.h"
 #include "nanoPAL.h"
 #include "sys_dev_ble_native.h"
+#include <nanoHAL.h>
 
 static const char *tag = "BLE";
 static uint8_t esp32_addr_type;
@@ -601,9 +602,27 @@ void SetSecuritySettings(
         ble_hs_cfg.sm_their_key_dist);
 }
 
+// Soft-reboot handler: tear down NimBLE on a ClrOnly soft reboot. The CLR
+// re-runs without a hardware reset, so without this NimBLE's allocations
+// survive and leak each soft reboot (~1.7 KB DMA-capable RAM measured on the
+// SpawnWear watch), eventually starving other allocations (e.g. the SD mount,
+// ESP_ERR_NO_MEM). Mirrors the I2C / I2S / SerialPort pattern. No-op if BLE
+// was never initialized.
+static void Device_ble_softRebootHandler()
+{
+    if (ble_initialized)
+    {
+        Device_ble_dispose();
+    }
+}
+
 bool DeviceBleInit()
 {
     BLE_DEBUG_PRINTF("DeviceBleInit %d\n", ble_initialized);
+
+    // Register the teardown handler once (HAL_AddSoftRebootHandler dedupes; the
+    // handler array is static so it persists across soft reboots).
+    HAL_AddSoftRebootHandler(Device_ble_softRebootHandler);
 
     // If already initialized then dispose first
     // This can happen when you start debugger
