@@ -382,3 +382,8 @@ CMakeUserPresets.json
 config/user-tools-repos.json
 config/user-prefs.json
 config/user-kconfig.conf
+
+# SpawnWear: the SpawnDev.Crypto native interop (Monocypher Ed25519/X25519) is a
+# real, committed feature - override the generic InteropAssemblies/FindINTEROP ignores.
+!InteropAssemblies/SpawnDev.Crypto/
+!CMake/Modules/FindINTEROP-SpawnDev.Crypto.cmake
