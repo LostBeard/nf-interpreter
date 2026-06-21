@@ -10,7 +10,7 @@
 // Format follows printf(3) - same convention as CLR_Debug::Printf.
 
 #include <stdarg.h>
-#include <nanoCLR_Headers.h>
+#include <nanoCLR_Runtime.h>
 
 extern "C" void Esp32FlashDriver_DiagPrintf(const char *fmt, ...)
 {

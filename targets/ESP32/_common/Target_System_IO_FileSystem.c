@@ -228,6 +228,14 @@ bool Storage_MountSpi(int spiBus, uint32_t csPin, int driveIndex)
     host.slot = spiBus + SPI2_HOST;
 #endif
 
+    // 2026-06-20 SpawnWear watch (ESP32-S3-Touch-AMOLED-2.06): clamp the SDSPI clock to a
+    // conservative, on-hardware-verified speed. The SD slot is wired for SDMMC (no dedicated
+    // SPI bus pull-ups), and SD "SPI mode" is optional in the spec - a 128 GB card mounts and
+    // reads cleanly at 400 kHz here, while an old 960 MB card returned stable-garbage block
+    // reads at every speed (its SPI-mode bulk read is flaky). 400 kHz is slow but proven;
+    // raise it and re-verify reads on real hardware before trusting a faster rate for throughput.
+    host.max_freq_khz = 400;
+
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
