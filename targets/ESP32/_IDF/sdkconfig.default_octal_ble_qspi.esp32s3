@@ -24,13 +24,15 @@ CONFIG_RMT_SUPPRESS_DEPRECATE_WARN=y
 CONFIG_I2S_SUPPRESS_DEPRECATE_WARN=y
 
 # Watch flash is 32 MB, but the nanoframework partition layout still slots into 4 MB
-# until we cut a custom 32 MB partition table. Leave the flashsize at 4 MB; the
-# remaining 28 MB sits unmapped (revisit when filesystem partition gets bumped).
-CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+# 2026-06-21: bumped 4 MB -> 16 MB (the watch's flash; vendor demos use 16 MB) so
+# the factory/NanoCLR partition can grow to hold native crypto (Monocypher Ed25519/
+# X25519) and the coming WebRTC/audio native. nf reads partition offsets from the
+# table at runtime (FixUpBlockRegionInfo), so no BlockRegions edit is needed.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
 
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="targets/ESP32/_IDF/esp32s3/partitions_nanoclr_4mb.csv"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="targets/ESP32/_IDF/esp32s3/partitions_nanoclr_16mb.csv"
 
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE=y
