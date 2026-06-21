@@ -33,6 +33,7 @@
 #include <driver/sdmmc_host.h>
 #include <driver/sdspi_host.h>
 #include <sdmmc_cmd.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -248,6 +249,35 @@ bool Storage_MountSpi(int spiBus, uint32_t csPin, int driveIndex)
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = (gpio_num_t)csPin;
     slot_config.host_id = (spi_host_device_t)host.slot;
+
+    // Free a mount leaked by a prior CLR *soft* reboot. A ClrOnly reboot (what
+    // nf-deploy / VS use) re-runs the CLR WITHOUT a hardware reset, so this `card`
+    // global and its VFS/FATFS/sdspi allocations survive from the previous run.
+    // esp_vfs_fat_sdspi_mount below would allocate a fresh set on top, leaking
+    // DMA-capable RAM each soft reboot until the mount starves (ESP_ERR_NO_MEM).
+    // Unmount + free the stale one first. On a cold boot `card` is NULL (BSS
+    // zeroed) so this is a no-op. The SPI bus is left intact - it's reused.
+    if (card != NULL)
+    {
+        Storage_DiagPrintf("[SDCard] stale card=%p from prior soft reboot - unmounting + freeing\r\n", (void *)card);
+        Storage_UnMountSDCard(driveIndex);
+    }
+    else
+    {
+        Storage_DiagPrintf("[SDCard] card=NULL at entry (cold boot or already freed)\r\n");
+    }
+
+    // 2026-06-21 diagnostic: the SDSPI mount intermittently fails with
+    // ESP_ERR_NO_MEM (0x101) after a warm reboot - the driver needs a contiguous
+    // DMA-capable internal-RAM block (bounce buffer) that isn't always available.
+    // Log the DMA/internal heap picture right before mounting so we can SEE how
+    // tight it is on a failing vs succeeding boot.
+    Storage_DiagPrintf(
+        "[SDCard] heap before mount: DMA free=%u largest=%u | INTERNAL free=%u largest=%u\r\n",
+        (unsigned int)heap_caps_get_free_size(MALLOC_CAP_DMA),
+        (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
+        (unsigned int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
     // Warm-up retry: the first SDSPI card-init after power-on is often flaky on this
     // SDMMC-wired slot (the very first f_mount returns ESP_FAIL, a subsequent one

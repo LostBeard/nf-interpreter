@@ -7,6 +7,7 @@
 
 #include "NF_ESP32_Network.h"
 #include "esp_netif_net_stack.h"
+#include <nanoHAL.h>
 
 #if defined(CONFIG_SOC_WIFI_SUPPORTED) || defined(CONFIG_SOC_WIRELESS_HOST_SUPPORTED)
 
@@ -128,11 +129,30 @@ void NF_ESP32_DeinitWifi()
     esp_wifi_deinit();
 }
 
+// Soft-reboot handler: tear Wi-Fi down on a ClrOnly soft reboot. The CLR
+// re-runs without a hardware reset, so without this esp_wifi's allocations
+// (control structs, RX/TX buffers, lwIP netifs) survive and leak each soft
+// reboot (~2.3 KB DMA-capable RAM measured on the SpawnWear watch) until other
+// allocations - e.g. the SD mount - start failing with ESP_ERR_NO_MEM. Mirrors
+// the pattern I2C / I2S / SerialPort already use. Guarded so it's a no-op if
+// Wi-Fi was never started.
+static void NF_ESP32_WifiSoftRebootHandler()
+{
+    if (IsWifiInitialised)
+    {
+        NF_ESP32_DeinitWifi();
+    }
+}
+
 extern "C" esp_err_t esp_hosted_init(void);
 
 esp_err_t NF_ESP32_InitaliseWifi()
 {
     esp_err_t ec = ESP_OK;
+
+    // Register the teardown handler once (HAL_AddSoftRebootHandler dedupes and
+    // the handler array is static, so it persists across soft reboots).
+    HAL_AddSoftRebootHandler(NF_ESP32_WifiSoftRebootHandler);
 
     wifi_mode_t expectedWifiMode = NF_ESP32_CheckExpectedWifiMode();
 
