@@ -33,6 +33,8 @@
 #include <driver/sdmmc_host.h>
 #include <driver/sdspi_host.h>
 #include <sdmmc_cmd.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <target_platform.h>
 
@@ -228,13 +230,13 @@ bool Storage_MountSpi(int spiBus, uint32_t csPin, int driveIndex)
     host.slot = spiBus + SPI2_HOST;
 #endif
 
-    // 2026-06-20 SpawnWear watch (ESP32-S3-Touch-AMOLED-2.06): clamp the SDSPI clock to a
-    // conservative, on-hardware-verified speed. The SD slot is wired for SDMMC (no dedicated
-    // SPI bus pull-ups), and SD "SPI mode" is optional in the spec - a 128 GB card mounts and
-    // reads cleanly at 400 kHz here, while an old 960 MB card returned stable-garbage block
-    // reads at every speed (its SPI-mode bulk read is flaky). 400 kHz is slow but proven;
-    // raise it and re-verify reads on real hardware before trusting a faster rate for throughput.
-    host.max_freq_khz = 400;
+    // 2026-06-20 SpawnWear watch (ESP32-S3-Touch-AMOLED-2.06): cap the SDSPI clock. The SD
+    // slot is wired for SDMMC (no dedicated SPI bus pull-ups) and SD "SPI mode" is optional
+    // in the spec, so the link margin is modest. 400 kHz is proven rock-solid here; 4 MHz is
+    // the throughput target (Media Player) now under on-hardware test. If a known-good card
+    // garbles block reads at 4 MHz, step back toward 400 kHz. (An old 960 MB card has a flaky
+    // SPI bulk read at every speed - test throughput with a good card, not that one.)
+    host.max_freq_khz = 4000;
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
@@ -247,13 +249,24 @@ bool Storage_MountSpi(int spiBus, uint32_t csPin, int driveIndex)
     slot_config.gpio_cs = (gpio_num_t)csPin;
     slot_config.host_id = (spi_host_device_t)host.slot;
 
-    errCode = esp_vfs_fat_sdspi_mount(mountPoint, &host, &slot_config, &mount_config, &card);
-    if (errCode == ESP_ERR_INVALID_STATE)
+    // Warm-up retry: the first SDSPI card-init after power-on is often flaky on this
+    // SDMMC-wired slot (the very first f_mount returns ESP_FAIL, a subsequent one
+    // succeeds). Retry a few times here with a short settle so a transient warm-up
+    // failure does not surface as a scary "mount failed" log - LogMountResult below
+    // logs only the FINAL outcome.
+    for (int attempt = 0; attempt < 4; attempt++)
     {
-        // Invalid state means its already mounted, this can happen if you are trying to debug mount from managed code
-        // and the code has already run & mounted
-        Storage_UnMountSDCard(driveIndex);
         errCode = esp_vfs_fat_sdspi_mount(mountPoint, &host, &slot_config, &mount_config, &card);
+        if (errCode == ESP_OK)
+        {
+            break;
+        }
+        if (errCode == ESP_ERR_INVALID_STATE)
+        {
+            // Already mounted (e.g. a re-mount from managed debug code) - unmount + retry.
+            Storage_UnMountSDCard(driveIndex);
+        }
+        vTaskDelay(pdMS_TO_TICKS(40));
     }
 
     return LogMountResult(errCode);
