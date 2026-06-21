@@ -6,13 +6,15 @@
 ###############################################################################################################################
 nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,
-# Factory area for NanoCLR - 1664k
-factory,  app, factory,  0x10000,  0x1A0000,
+# Factory area for NanoCLR - 3072k (enlarged 2026-06-21 from 1664k to hold native
+# crypto (Monocypher Ed25519/X25519) + the coming WebRTC/audio native; the binary
+# had grown to ~1.72 MB and overflowed the old factory partition)
+factory,  app, factory,  0x10000,  0x300000,
 # Deployment area for Managed code 2944k
-deploy,   data, 0x84,    0x1B0000, 0x2E0000, 
+deploy,   data, 0x84,    0x310000, 0x2E0000,
 # Config data for Network, Wireless, certificates, user data  3MB
-config,   data, littlefs,  0x490000, 0x300000,
+config,   data, littlefs,  0x5F0000, 0x300000,
 ##########################################
-# spare from 0x790000 (8Mb free)         #
+# spare from 0x8F0000 (~7Mb free)        #
 # total size has to be 0x1000000 or less #
 ##########################################
