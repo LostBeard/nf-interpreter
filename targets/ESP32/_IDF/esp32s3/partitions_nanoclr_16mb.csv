@@ -6,12 +6,16 @@
 ###############################################################################################################################
 nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,
-# Factory area for NanoCLR - 3072k (enlarged 2026-06-21 from 1664k to hold native
-# crypto (Monocypher Ed25519/X25519) + the coming WebRTC/audio native; the binary
-# had grown to ~1.72 MB and overflowed the old factory partition)
-factory,  app, factory,  0x10000,  0x300000,
-# Deployment area for Managed code 2944k
-deploy,   data, 0x84,    0x310000, 0x2E0000,
+# Factory area for NanoCLR - 3456k (enlarged 0x300000 -> 0x360000, ends 0x370000).
+# 2026-06-21: moved the deploy region 0x310000 -> 0x370000 as a TEST to see if the
+# ~358 KB deploy ceiling was a bad flash sector at 0x3678F8. RESULT: the failure
+# moved to 0x3C78F8 (= 0x370000 + 358648, SAME offset) - so it is NOT a bad sector,
+# it's a deterministic software limit in the nanoCLR deploy resolve. This layout is
+# kept (valid, slightly larger factory) but does NOT fix the ceiling - that's a
+# separate fix. See Research/nf-interpreter-deploy-ceiling.md (2026-06-21 UPDATE).
+factory,  app, factory,  0x10000,  0x360000,
+# Deployment area for Managed code 2560k
+deploy,   data, 0x84,    0x370000, 0x280000,
 # Config data for Network, Wireless, certificates, user data  3MB
 config,   data, littlefs,  0x5F0000, 0x300000,
 ##########################################
