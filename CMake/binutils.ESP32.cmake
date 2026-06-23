@@ -607,7 +607,14 @@ macro(nf_add_idf_as_library)
         nf_install_idf_component_from_registry(esp_tinyusb 694410b3-6302-4cec-8a66-1ba0649b6809) 
     endif()
 
-    nf_install_idf_component_from_registry(littlefs 97bf51ce-1daa-4369-81ec-eacbd8102815) 
+    nf_install_idf_component_from_registry(littlefs 97bf51ce-1daa-4369-81ec-eacbd8102815)
+
+    # Phase 7b: libpeer (sepfy) - WebRTC data-channel stack for the watch. MIT. v0.0.3.
+    nf_install_idf_component_from_registry(libpeer dfec0c2b-6788-4bca-8ccb-51a6083eb4b0)
+    # libpeer's srtp dependency (sepfy/srtp - registers as IDF component 'srtp'). v2.3.0.
+    # (usrsctp is NOT needed: ESP32 builds with CONFIG_USE_USRSCTP=0, so libpeer's IDF
+    #  REQUIRES is just 'mbedtls srtp json esp_netif'.)
+    nf_install_idf_component_from_registry(srtp 27bc5f1c-b9da-441f-a3b0-3e7d6541d914)
 
     if(${TARGET_SERIES_SHORT} STREQUAL "esp32p4")
        nf_install_idf_component_from_registry(esp_wifi_remote c90c182f-b7fc-4a59-a445-96f712e36bb2)
@@ -692,6 +699,9 @@ macro(nf_add_idf_as_library)
         esp_psram
         esp_adc
         littlefs
+        espcoredump
+        srtp
+        libpeer
     )
 
     # set list with the libraries for IDF components added
@@ -708,6 +718,9 @@ macro(nf_add_idf_as_library)
         idf::esp_psram
         idf::esp_adc
         idf::littlefs
+        idf::espcoredump
+        idf::srtp
+        idf::libpeer
     )
 
     # Needed for remote Wifi module on P4 boards
@@ -864,6 +877,12 @@ macro(nf_add_idf_as_library)
     else()
         message(STATUS "Using default XTAL frequency")
     endif()
+
+    # Phase 7b: GCC 14 (IDF 5.5 toolchain) promotes these C warnings to errors by default.
+    # Third-party C (sepfy/libpeer + sepfy/srtp) was written for older GCC and trips them
+    # (e.g. libsrtp's srtp_cipher_encrypt function-pointer arg). nf's own code + IDF compile
+    # clean, so downgrading these back to warnings is effectively scoped to the WebRTC libs.
+    idf_build_set_property(COMPILE_OPTIONS "-Wno-error=incompatible-pointer-types;-Wno-error=implicit-function-declaration;-Wno-error=int-conversion" APPEND)
 
     # create IDF static libraries
     idf_build_process(${TARGET_SERIES_SHORT}

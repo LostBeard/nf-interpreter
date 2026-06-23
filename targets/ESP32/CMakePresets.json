@@ -322,7 +322,7 @@
             "cacheVariables": {
                 "TARGET_NAME": "${presetName}",
                 "NF_TARGET_DEFCONFIG": "targets/ESP32/defconfig/ESP32_S3_BLE_QSPI_defconfig",
-                "NF_INTEROP_ASSEMBLIES": "SpawnDev.Crypto"
+                "NF_INTEROP_ASSEMBLIES": "SpawnDev.Crypto SpawnDev.WebRTC"
             }
         },
         {

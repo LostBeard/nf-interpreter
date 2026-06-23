@@ -6,6 +6,12 @@
 #include <nanoPAL_BlockStorage.h>
 #include <Target_BlockStorage_Esp32FlashDriver.h>
 
+// 2026-06-21 (Riker) DEPLOY-CEILING DEBUG: subscribe the deploy task to the Task WDT
+// around esp_partition_write so a block there (the ~358648-byte ceiling symptom, which
+// does NOT panic - no coredump fired) trips a coredump whose backtrace pinpoints where
+// it is stuck. Remove once the ceiling is root-caused.
+#include <esp_task_wdt.h>
+
 const DRAM_ATTR esp_partition_t *g_pFlashDriver_partition;
 const void *esp32_flash_start_ptr;
 esp_partition_mmap_handle_t g_esp32_flash_out_handle;
@@ -192,9 +198,19 @@ bool Esp32FlashDriver_Write(
 
     ESP_LOGI(TAG, "Writting  %dB @ %d\n", numBytes, offsetAddress);
 
+    // 2026-06-21 (Riker) DEPLOY-CEILING DEBUG: watch this task while the flash write
+    // runs. If esp_partition_write blocks (the ~358648 ceiling symptom), the task stops
+    // resetting the WDT -> Task WDT panic -> coredump backtrace shows the stuck call.
+    // offsetAddress + numBytes are locals so they land in the coredump stack too.
+    esp_task_wdt_add(NULL);
+    esp_task_wdt_reset();
+    esp_err_t writeResult =
+        esp_partition_write(g_pFlashDriver_partition, offsetAddress, (const void *)buffer, (size_t)numBytes);
+    esp_task_wdt_reset();
+    esp_task_wdt_delete(NULL);
+
     // write buffer to partition
-    return (
-        esp_partition_write(g_pFlashDriver_partition, offsetAddress, (const void *)buffer, (size_t)numBytes) == ESP_OK);
+    return (writeResult == ESP_OK);
 }
 
 bool Esp32FlashDriver_IsBlockErased(void *context, ByteAddress blockAddress, unsigned int length)
