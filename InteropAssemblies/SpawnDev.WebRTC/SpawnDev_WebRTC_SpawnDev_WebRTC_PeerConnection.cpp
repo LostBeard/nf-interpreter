@@ -27,6 +27,11 @@ extern "C"
 #undef PeerConnection
 typedef LpPeerConn LpPeer;
 
+// SpawnWear (Phase 7b) DTLS crash localization: libpeer dtls_srtp.c writes this RTC-noinit
+// checkpoint (survives the soft-reset reboot). Exposed via GetState(-1) so the managed side can
+// read where the DTLS handshake died after a crash. Remove with the dtls_srtp.c checkpoints.
+extern "C" volatile uint32_t g_sw_dtls_cp;
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -319,6 +324,10 @@ signed int PeerConnection::TryReceive(signed int param0, CLR_RT_TypedArray_UINT8
 signed int PeerConnection::GetState(signed int param0, HRESULT &hr)
 {
     (void)hr;
+    // SpawnWear (Phase 7b) diagnostic: handle -1 returns the RTC-noinit DTLS checkpoint (survives
+    // the crash reboot) instead of a slot state - lets the managed side localize the DTLS crash.
+    if (param0 == -1)
+        return (signed int)g_sw_dtls_cp;
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     SwPeerSlot *s = sw_slot(param0);
     signed int st = (s != NULL) ? s->state : (int)PEER_CONNECTION_CLOSED;
