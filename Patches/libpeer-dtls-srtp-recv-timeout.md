@@ -131,6 +131,24 @@ In `sctp_outgoing_data` (the `#else` non-usrsctp branch, ~line 127) the DATA chu
 `if (connected)` block, +~500ms) so the OPEN is sent on the live SCTP association. The offer's
 `m=application` line comes from the PC config, not that call, so the SDP is unaffected.
 
+## H. libpeer `src/sctp.c` - deliver BINARY data-channel messages on RECEIVE (fix #3, Phase 7c)
+
+The manual SCTP receive (`sctp_handle_sctp_packet`, the `SCTP_DATA` case ~line 278) only delivered
+`onmessage` for the `DATA_CHANNEL_PPID_DOMSTRING` ppid - every **BINARY** data-channel message was
+silently dropped on RECEIVE (the watch had only ever SENT before, so this was never hit). The
+Ed25519 challenge nonces/responses (and all app data) are binary. Deliver BINARY + the partial
+variants too (mirrors usrsctp's `sctp_handle_incoming_data`):
+```c
+} else if (ntohl(data_chunk->ppid) == DATA_CHANNEL_PPID_DOMSTRING ||
+           ntohl(data_chunk->ppid) == DATA_CHANNEL_PPID_BINARY ||
+           ntohl(data_chunk->ppid) == DATA_CHANNEL_PPID_DOMSTRING_PARTIAL ||
+           ntohl(data_chunk->ppid) == DATA_CHANNEL_PPID_BINARY_PARTIAL) {
+  if (sctp->onmessage) { sctp->onmessage(...); }
+}
+```
+With this, the watch-side Ed25519 mutual challenge over the data channel completes (answerroom logs
+"CONNECTED + verified"). Phase 7c done.
+
 ## Build/flash loop
 1. Re-apply A-G to the IDF files if re-fetched. 2. `rm nf-interpreter/sdkconfig`.
 3. `tools\nf-build-py313.bat ESP32_S3_BLE_QSPI`. 4. BOOT dance (COM6) ->
