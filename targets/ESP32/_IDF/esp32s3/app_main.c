@@ -62,6 +62,9 @@ void app_main()
     // DEPLOY-CEILING DEBUG (Riker 2026-06-21): record why we (re)booted into the coredump
     // partition scratch, readable via esptool: read_flash 0x8F0000 8 -> ['R','S','T','S', reason].
     // esp_reset_reason_t: 1=POWERON 2=EXT 3=SW 4=PANIC 5=INT_WDT 6=TASK_WDT 7=WDT 9=BROWNOUT.
+    // PHASE 7b (2026-06-22): DISABLED - this erased the coredump partition every boot, destroying
+    // the DTLS-crash backtrace. Leave the coredump intact so espcoredump can read the panic.
+#if 0
     {
         esp_reset_reason_t resetReason = esp_reset_reason();
         const esp_partition_t *coredumpPart =
@@ -75,6 +78,7 @@ void app_main()
             }
         }
     }
+#endif
 
     // Switch off logging so as not to interfere with WireProtocol over Uart0
     esp_log_level_set("*", ESP_LOG_NONE);
