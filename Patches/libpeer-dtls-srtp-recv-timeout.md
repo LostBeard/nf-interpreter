@@ -1,13 +1,28 @@
-# libpeer + mbedTLS WebRTC patches (SpawnWear Phase 7b)
+# libpeer + mbedTLS WebRTC patches (SpawnWear Phase 7)
 
-**Files live in `$IDF_PATH/components/libpeer/` and `$IDF_PATH/components/mbedtls/mbedtls/library/`**
-(`C:/Espressif/frameworks/esp-idf-v5.5.4/...`). The libpeer component is a **vendored copy** (no
-live `.git`) fetched by the IDF component manager; the mbedTLS library is the upstream IDF copy.
-Both are lost on a clean re-fetch / IDF reinstall. **Re-apply everything here after a fresh fetch.**
+## ✅ libpeer is now a fork - `LostBeard/libpeer` branch `spawnwear` (2026-06-23)
 
-> **Long-term TODO:** fork libpeer (`LostBeard/libpeer`) and wire it as a git submodule like the
-> SipSorcery / ILGPU forks, so these become tracked commits instead of a re-apply doc. Until then,
-> this doc is the source of truth - keep it in sync with the IDF files.
+The libpeer changes are no longer a local-only re-apply doc - they are committed to the SpawnDev fork
+**[`LostBeard/libpeer`](https://github.com/LostBeard/libpeer) branch `spawnwear`** (forked from
+sepfy/libpeer with attribution; the exact source verified on the watch). **Build integration:** clone
+that branch into `$IDF_PATH/components/libpeer/` and init its submodules:
+
+```
+git clone -b spawnwear https://github.com/LostBeard/libpeer.git $IDF_PATH/components/libpeer
+cd $IDF_PATH/components/libpeer && git submodule update --init --recursive
+```
+
+(third_party submodules are inherited from upstream; if a future build hits a third_party version
+mismatch, pin them - but the watch build uses the IDF's own mbedTLS and `CONFIG_USE_USRSCTP=0`, so
+most are unused.) This doc remains the human-readable "what changed + why" reference.
+
+## mbedTLS: nothing to keep - REVERT to stock
+
+The only mbedTLS edits are the **TEMP `g_sw_dtls_cp` checkpoint diagnostics** in `ssl_tls12_server.c`
+(the `0x300xx` markers). That's the DTLS **server** path, which the watch no longer uses (it's the
+DTLS **client** now), so these are dead. **Revert `ssl_tls12_server.c` to stock** - no mbedTLS fork or
+patch needed. (Also strip the matching temp `g_sw_dtls_cp` capture in libpeer `dtls_srtp.c` on the next
+firmware build; tracked in the fork's TODO.)
 
 Checkpoint read path: `SpawnDev.WebRTC` interop `GetState(-1)` -> `g_sw_dtls_cp` (also
 `GET http://192.168.1.170:8080/webrtc-checkpoint`).
