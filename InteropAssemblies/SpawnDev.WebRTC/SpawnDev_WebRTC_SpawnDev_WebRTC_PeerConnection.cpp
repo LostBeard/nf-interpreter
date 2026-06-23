@@ -50,7 +50,7 @@ struct SwPeerSlot
     LpPeer *pc;
     PeerConfiguration config; // libpeer copies it, but user_data points back here
     char localSdp[SW_MAX_SDP];
-    int localSdpLen;
+    volatile int localSdpLen; // volatile: read lock-free by GetLocalSdpLength (written last by the pump)
     volatile int state;
     // single-producer (loop task) / single-consumer (managed TryReceive) ring
     uint8_t rxBuf[SW_RX_SLOTS][SW_RX_MSG_MAX];
@@ -258,11 +258,11 @@ void PeerConnection::AddIceCandidate(signed int param0, const char *param1, HRES
 signed int PeerConnection::GetLocalSdpLength(signed int param0, HRESULT &hr)
 {
     (void)hr;
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    // LOCK-FREE (polled). localSdpLen is volatile and is written LAST by sw_on_icecandidate (after
+    // the SDP body), so a non-zero read means the SDP is complete. Taking s_mutex here would block
+    // the managed thread while the pump holds it across ICE/STUN gathering, freezing the CLR (UI).
     SwPeerSlot *s = sw_slot(param0);
-    signed int n = (s != NULL) ? s->localSdpLen : 0;
-    xSemaphoreGive(s_mutex);
-    return n;
+    return (s != NULL) ? s->localSdpLen : 0;
 }
 
 void PeerConnection::GetLocalSdp(signed int param0, CLR_RT_TypedArray_UINT8 param1, HRESULT &hr)
@@ -303,7 +303,12 @@ signed int PeerConnection::Send(signed int param0, CLR_RT_TypedArray_UINT8 param
 signed int PeerConnection::TryReceive(signed int param0, CLR_RT_TypedArray_UINT8 param1, HRESULT &hr)
 {
     (void)hr;
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    // LOCK-FREE (polled every ~200 ms by the managed receive loop). The rx ring is single-producer
+    // (sw_on_message, from the pump task) / single-consumer (this call); rxHead/rxTail are volatile.
+    // Reading without s_mutex is both safe (SPSC) and REQUIRED: the pump holds s_mutex across the whole
+    // peer_connection_loop (incl. the blocking DTLS/SCTP recv), so taking it here blocks this managed
+    // thread, and a blocking native call freezes nanoFramework's cooperatively-scheduled CLR -> the UI
+    // (touch, watchface) hangs until reset. Never block the CLR here.
     SwPeerSlot *s = sw_slot(param0);
     signed int n = 0;
     if (s != NULL && s->rxTail != s->rxHead)
@@ -317,7 +322,6 @@ signed int PeerConnection::TryReceive(signed int param0, CLR_RT_TypedArray_UINT8
             memcpy(param1.GetBuffer(), s->rxBuf[idx], n);
         s->rxTail = (idx + 1) % SW_RX_SLOTS;
     }
-    xSemaphoreGive(s_mutex);
     return n;
 }
 
@@ -328,11 +332,11 @@ signed int PeerConnection::GetState(signed int param0, HRESULT &hr)
     // the crash reboot) instead of a slot state - lets the managed side localize the DTLS crash.
     if (param0 == -1)
         return (signed int)g_sw_dtls_cp;
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    // LOCK-FREE (polled). s->state is volatile, written by sw_on_state from the pump task. Taking
+    // s_mutex here would block the managed thread while the pump holds it across the slow DTLS
+    // handshake - freezing the cooperatively-scheduled CLR (and the UI) for the entire connect.
     SwPeerSlot *s = sw_slot(param0);
-    signed int st = (s != NULL) ? s->state : (int)PEER_CONNECTION_CLOSED;
-    xSemaphoreGive(s_mutex);
-    return st;
+    return (s != NULL) ? s->state : (int)PEER_CONNECTION_CLOSED;
 }
 
 void PeerConnection::Close(signed int param0, HRESULT &hr)
