@@ -129,7 +129,9 @@ CONFIG_MBEDTLS_XTEA_C=n
 # nf had it off for size. Enable so libpeer links.
 CONFIG_MBEDTLS_PEM_WRITE_C=y
 CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
-CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y
+# Phase 7b: DTLS is TLS-1.2-only; TLS 1.3 being on can hijack the DTLS server path -> the watch
+# sent handshake_failure with none of the 1.2 checks firing. Force DTLS 1.2. (was =y)
+CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=n
 CONFIG_MBEDTLS_CLIENT_SSL_SESSION_TICKETS=y
 
 CONFIG_LITTLEFS_MAX_PARTITIONS=1
