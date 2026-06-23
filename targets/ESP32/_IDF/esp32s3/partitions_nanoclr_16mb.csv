@@ -18,7 +18,12 @@ factory,  app, factory,  0x10000,  0x360000,
 deploy,   data, 0x84,    0x370000, 0x280000,
 # Config data for Network, Wireless, certificates, user data  3MB
 config,   data, littlefs,  0x5F0000, 0x300000,
+# Coredump partition (2026-06-21, Riker): capture the ~358 KB deploy-ceiling crash
+# backtrace. USB-C only watch (no UART/JTAG pins, no live console), so a coredump
+# written to flash on panic and read post-crash via espcoredump over COM6 is the
+# only out-of-band capture. 64K in the spare area - moves no existing partition.
+coredump, data, coredump,  0x8F0000, 0x10000,
 ##########################################
-# spare from 0x8F0000 (~7Mb free)        #
+# spare from 0x900000 (~7Mb free)        #
 # total size has to be 0x1000000 or less #
 ##########################################
