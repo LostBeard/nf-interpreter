@@ -43,6 +43,8 @@ using namespace SpawnDev_WebRTC::SpawnDev_WebRTC;
 #define SW_MAX_SDP 4096
 #define SW_RX_SLOTS 8
 #define SW_RX_MSG_MAX 1024
+#define SW_TX_SLOTS 8
+#define SW_TX_MSG_MAX 512
 
 struct SwPeerSlot
 {
@@ -52,11 +54,18 @@ struct SwPeerSlot
     char localSdp[SW_MAX_SDP];
     volatile int localSdpLen; // volatile: read lock-free by GetLocalSdpLength (written last by the pump)
     volatile int state;
-    // single-producer (loop task) / single-consumer (managed TryReceive) ring
+    // inbound: single-producer (loop task) / single-consumer (managed TryReceive) ring
     uint8_t rxBuf[SW_RX_SLOTS][SW_RX_MSG_MAX];
     int rxLen[SW_RX_SLOTS];
     volatile int rxHead; // written by loop task
     volatile int rxTail; // written by TryReceive
+    // outbound: single-producer (managed Send) / single-consumer (loop task) ring. Send writes here
+    // LOCK-FREE (no s_mutex) so it never blocks the cooperatively-scheduled CLR; the pump drains it
+    // into libpeer under the mutex it already holds.
+    uint8_t txBuf[SW_TX_SLOTS][SW_TX_MSG_MAX];
+    int txLen[SW_TX_SLOTS];
+    volatile int txHead; // written by Send
+    volatile int txTail; // written by loop task
 };
 
 static SwPeerSlot s_slots[SW_MAX_PEERS];
@@ -117,8 +126,20 @@ static void sw_loop_task(void *arg)
             xSemaphoreTake(s_mutex, portMAX_DELAY);
         for (int i = 0; i < SW_MAX_PEERS; i++)
         {
-            if (s_slots[i].inUse && s_slots[i].pc != NULL)
-                peer_connection_loop(s_slots[i].pc);
+            SwPeerSlot *s = &s_slots[i];
+            if (s->inUse && s->pc != NULL)
+            {
+                peer_connection_loop(s->pc);
+                // Drain the managed Send TX ring into libpeer (we hold s_mutex). SPSC: managed Send is
+                // the producer (txHead); we are the sole consumer (txTail). This moves the actual
+                // libpeer send OFF the managed thread so Send never blocks the CLR.
+                while (s->txTail != s->txHead)
+                {
+                    int idx = s->txTail;
+                    peer_connection_datachannel_send(s->pc, (char *)s->txBuf[idx], (size_t)s->txLen[idx]);
+                    s->txTail = (idx + 1) % SW_TX_SLOTS;
+                }
+            }
         }
         if (s_mutex != NULL)
             xSemaphoreGive(s_mutex);
@@ -285,19 +306,22 @@ void PeerConnection::GetLocalSdp(signed int param0, CLR_RT_TypedArray_UINT8 para
 signed int PeerConnection::Send(signed int param0, CLR_RT_TypedArray_UINT8 param1, signed int param2, HRESULT &hr)
 {
     (void)hr;
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    // LOCK-FREE: enqueue into the slot's TX ring (single-producer = this managed thread / single-
+    // consumer = the pump). No s_mutex, so a Send NEVER blocks the cooperatively-scheduled CLR - a
+    // blocking Send was wedging the UI (touch/watchface) when streaming telemetry. The pump drains the
+    // ring into libpeer under the mutex it already holds.
     SwPeerSlot *s = sw_slot(param0);
-    signed int rv = -1;
-    if (s != NULL)
-    {
-        int len = param2;
-        int cap = (int)param1.GetSize();
-        if (len > cap)
-            len = cap;
-        rv = peer_connection_datachannel_send(s->pc, (char *)param1.GetBuffer(), (size_t)len);
-    }
-    xSemaphoreGive(s_mutex);
-    return rv;
+    if (s == NULL) return -1;
+    int len = param2;
+    int cap = (int)param1.GetSize();
+    if (len > cap) len = cap;
+    if (len > SW_TX_MSG_MAX) len = SW_TX_MSG_MAX; // oversize clamped; the bus chunks larger payloads
+    int next = (s->txHead + 1) % SW_TX_SLOTS;
+    if (next == s->txTail) return -1; // ring full - drop (never block); caller may retry next tick
+    if (len > 0) memcpy(s->txBuf[s->txHead], param1.GetBuffer(), len);
+    s->txLen[s->txHead] = len;
+    s->txHead = next;
+    return len;
 }
 
 signed int PeerConnection::TryReceive(signed int param0, CLR_RT_TypedArray_UINT8 param1, HRESULT &hr)
