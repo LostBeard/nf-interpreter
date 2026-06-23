@@ -149,6 +149,32 @@ variants too (mirrors usrsctp's `sctp_handle_incoming_data`):
 With this, the watch-side Ed25519 mutual challenge over the data channel completes (answerroom logs
 "CONNECTED + verified"). Phase 7c done.
 
+## I. Watch is the DTLS CLIENT, not server (fix #4, Phase 7c browser interop)
+
+Chrome/Firefox send a LARGE DTLS ClientHello that exceeds the DTLS MTU and is FRAGMENTED across
+handshake records. mbedTLS's SERVER refuses to reassemble the initial ClientHello
+(`ssl_tls12_server.c` ~line 1111: "ClientHello fragmentation not supported" ->
+`MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE` = -0x7080, captured as `g_sw_dtls_cp` state=1 err=0x7080).
+SipSorcery worked only because its ClientHello is small (one fragment).
+
+FIX: make the watch (the OFFERER) the DTLS CLIENT instead of server. As the client, the watch sends
+its own SMALL ClientHello, and mbedTLS's CLIENT reads the peer's flight via the normal read_record
+path which DOES reassemble fragments. The answerer (browser/SipSorcery) becomes the DTLS server
+(setup:passive). No mbedTLS surgery; works with any browser, no flags.
+- `peer_connection.c` ~line 426 (PEER_CONNECTION_NEW, the offerer): `DTLS_SRTP_ROLE_SERVER` ->
+  `DTLS_SRTP_ROLE_CLIENT`. The offer SDP then advertises `a=setup:active`.
+- `dtls_srtp.c` `dtls_srtp_handshake_client`: only LOGE on a real error, not WANT_READ/WANT_WRITE
+  (non-blocking client steps the handshake across many loop calls).
+- The role-based SCTP stream-id (section G.1) auto-switches the data channel to EVEN stream 0
+  (correct for the DTLS client per RFC 8832 §6); the answerer-server accepts the client's even stream.
+- mbedTLS server cert-verify limitation is now MOOT for the watch (it no longer parses ClientHellos).
+  The mbedTLS diagnostics in section C can be stripped any time.
+- `dtls_srtp.c` `dtls_srtp_init` after `mbedtls_ssl_setup`: add
+  `mbedtls_ssl_set_hostname(&dtls_srtp->ssl, NULL);`. As the DTLS CLIENT, mbedTLS 3.6+ refuses to
+  verify the server cert unless set_hostname was called explicitly
+  (`MBEDTLS_ERR_SSL_CERTIFICATE_VERIFICATION_WITHOUT_HOSTNAME` = -0x5D80 at SERVER_CERTIFICATE).
+  WebRTC has no hostname (identity = cert fingerprint), so opt out with NULL.
+
 ## Build/flash loop
 1. Re-apply A-G to the IDF files if re-fetched. 2. `rm nf-interpreter/sdkconfig`.
 3. `tools\nf-build-py313.bat ESP32_S3_BLE_QSPI`. 4. BOOT dance (COM6) ->
