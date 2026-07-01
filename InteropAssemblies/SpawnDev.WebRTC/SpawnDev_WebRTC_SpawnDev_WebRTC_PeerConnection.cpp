@@ -35,6 +35,7 @@ extern "C" volatile uint32_t g_sw_dtls_cp;
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "esp_heap_caps.h"   // SpawnWear leak probe: free INTERNAL-RAM heap (GetState(-2))
 #include <string.h>
 
 using namespace SpawnDev_WebRTC::SpawnDev_WebRTC;
@@ -356,6 +357,18 @@ signed int PeerConnection::GetState(signed int param0, HRESULT &hr)
     // the crash reboot) instead of a slot state - lets the managed side localize the DTLS crash.
     if (param0 == -1)
         return (signed int)g_sw_dtls_cp;
+    // SpawnWear generic heap diagnostics: -2 = free INTERNAL-RAM bytes; -3 = largest free INTERNAL block;
+    // -4 = free PSRAM bytes; -5 = largest free PSRAM block. Kept as a lightweight always-available memory
+    // probe (no libpeer deps). The 2026-06-30 connect-leak hunt used these to PROVE there is no per-session
+    // leak (settled cross-session free heap flat in both heaps incl a 120s sustained-telemetry hold).
+    if (param0 == -2)
+        return (signed int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    if (param0 == -3)
+        return (signed int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    if (param0 == -4)
+        return (signed int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    if (param0 == -5)
+        return (signed int)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
     // LOCK-FREE (polled). s->state is volatile, written by sw_on_state from the pump task. Taking
     // s_mutex here would block the managed thread while the pump holds it across the slow DTLS
     // handshake - freezing the cooperatively-scheduled CLR (and the UI) for the entire connect.
