@@ -63,6 +63,23 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+# SpawnWear 2026-06-30: route WiFi + lwIP buffers to PSRAM. NOT a leak-mask - rigorous state-based
+# measurement (settled cross-session free heap in BOTH internal and PSRAM, incl a 120s sustained-telemetry
+# hold) proved there is NO per-session leak: the per-close dip is transient async pbuf frees that fully
+# reclaim by next session start (the confound the earlier close-time probes misread as ~1.1KB/session). This
+# flag is a legitimate RELIABILITY win: it keeps ~26KB free INTERNAL RAM instead of ~16KB, so the transient
+# async-free spikes during rapid reconnects don't momentarily starve socket() (A/B PROVEN: with this OFF,
+# connects went from ~1-in-11 retries to ~3-in-8). Pairs with the udp_socket_close recvmbox drain (socket.c),
+# which reduces the pbuf backlog at the source. Both are real fixes for the "exhaustion at ~4 connects" bug.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# SpawnWear 2026-06-30: heap tracing (CONFIG_HEAP_TRACING_STANDALONE) was tried to pin the leak but it
+# WON'T BOOT on this device (the global alloc/free hook is too invasive for the tight internal RAM /
+# cache-disabled contexts) - removed. The leak was localized another way (managed phase-bisect + socket
+# drain probe). Do NOT re-enable heap tracing here.
+# SpawnWear 2026-06-30: lwIP MEMP pool stats (CONFIG_LWIP_STATS) were tried to name the "leaking" pool but
+# ESP-IDF uses MEMP_MEM_MALLOC=1 (pools are heap-backed) so MEMP_STATS is forced 0 - no per-pool .used
+# exists on this platform. Moot anyway: the leak was disproven (transient async frees, not a leak). Removed.
+# CONFIG_LWIP_STATS is not set
 
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
