@@ -13,6 +13,17 @@
 #include <nanoCLR_Runtime.h>
 #include <nanoPackStruct.h>
 
+struct Library_SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText
+{
+    NANOCLR_NATIVE_DECLARE(CreateFont___STATIC__I4__SZARRAY_U1);
+    NANOCLR_NATIVE_DECLARE(MeasureText___STATIC__I4__I4__STRING);
+    NANOCLR_NATIVE_DECLARE(FontHeight___STATIC__I4__I4);
+    NANOCLR_NATIVE_DECLARE(RenderText___STATIC__I4__I4__STRING__I4__SZARRAY_U1);
+    NANOCLR_NATIVE_DECLARE(ReleaseFont___STATIC__VOID__I4);
+
+    //--//
+};
+
 struct Library_SpawnDev_WebRTC_SpawnDev_WebRTC_PeerConnection
 {
     NANOCLR_NATIVE_DECLARE(Create___STATIC__I4);
