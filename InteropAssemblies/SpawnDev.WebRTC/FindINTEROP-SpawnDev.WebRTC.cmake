@@ -20,6 +20,10 @@ list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src/HAL/Include)
 list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src/PAL/Include)
 list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS ${BASE_PATH_FOR_THIS_MODULE})
 
+# SpawnWear: libpeer public include (peer.h) - PeerConnection.cpp needs it; libpeers ESP-IDF
+# component includes stopped propagating to NF_NativeAssemblies after idf_component.yml was removed.
+list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS C:/Espressif/frameworks/esp-idf-v5.5.4/components/libpeer/include)
+
 
 # source files
 set(SpawnDev.WebRTC_SRCS
@@ -27,6 +31,8 @@ set(SpawnDev.WebRTC_SRCS
     SpawnDev_WebRTC.cpp
 
 
+    SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText_mshl.cpp
+    SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText.cpp
     SpawnDev_WebRTC_SpawnDev_WebRTC_PeerConnection_mshl.cpp
     SpawnDev_WebRTC_SpawnDev_WebRTC_PeerConnection.cpp
 
@@ -34,7 +40,10 @@ set(SpawnDev.WebRTC_SRCS
 
 foreach(SRC_FILE ${SpawnDev.WebRTC_SRCS})
 
-    set(SpawnDev.WebRTC_SRC_FILE SRC_FILE-NOTFOUND)
+    # SpawnWear: unset the CACHE entry (not just a normal var) so find_file actually re-searches
+    # each file every configure - otherwise the cached first result is reused for all files and
+    # newly-added interop sources (e.g. NativeText) never get compiled -> undefined-reference link.
+    unset(SpawnDev.WebRTC_SRC_FILE CACHE)
 
     find_file(SpawnDev.WebRTC_SRC_FILE ${SRC_FILE}
         PATHS

@@ -12,6 +12,11 @@
 
 static const CLR_RT_MethodHandler method_lookup[] =
 {
+    Library_SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText::CreateFont___STATIC__I4__SZARRAY_U1,
+    Library_SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText::MeasureText___STATIC__I4__I4__STRING,
+    Library_SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText::FontHeight___STATIC__I4__I4,
+    Library_SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText::RenderText___STATIC__I4__I4__STRING__I4__SZARRAY_U1,
+    Library_SpawnDev_WebRTC_SpawnDev_WebRTC_NativeText::ReleaseFont___STATIC__VOID__I4,
     Library_SpawnDev_WebRTC_SpawnDev_WebRTC_PeerConnection::Create___STATIC__I4,
     Library_SpawnDev_WebRTC_SpawnDev_WebRTC_PeerConnection::CreateDataChannel___STATIC__VOID__I4__STRING,
     Library_SpawnDev_WebRTC_SpawnDev_WebRTC_PeerConnection::CreateOffer___STATIC__VOID__I4,
@@ -29,7 +34,7 @@ static const CLR_RT_MethodHandler method_lookup[] =
 const CLR_RT_NativeAssemblyData g_CLR_AssemblyNative_SpawnDev_WebRTC =
 {
     "SpawnDev.WebRTC",
-    0xD3101139,
+    0x6ADDCD4C,
     method_lookup,
     { 1, 0, 0, 0 }
 };
