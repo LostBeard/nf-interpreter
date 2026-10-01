@@ -281,25 +281,38 @@ static void WP_ReceiveBytesUsbJtag(uint8_t **ptr, uint32_t *size)
     *size -= read;
 }
 
+// True after a transmit timed out because the host is not draining the USB-Serial-JTAG port. The cable is
+// still plugged in (usb_serial_jtag_is_connected() stays true), but no program has the COM port open, so the
+// TX ring buffer stays full. Without this, EVERY message (each Debug.WriteLine) waited the full 250 ms per
+// write - up to 500 ms per message, on the CLR thread, freezing all managed threads: a 9-line exception trace
+// cost ~4.5 s and touch input lagged 5-10 s whenever no host was attached. While stalled, writes don't wait
+// (whatever fits in the ring buffer goes, the rest is dropped - the host resyncs on the packet signature).
+// The first message that goes out complete (the host is reading again) clears it.
+static bool s_usbJtagTxStalled = false;
+
 static uint8_t WP_TransmitMessageUsbJtag(WP_Message *message)
 {
     ASSERT(message);
 
-    if (UsbSerialWrite((const uint8_t *)&message->m_header, sizeof(message->m_header), pdMS_TO_TICKS(250)) !=
+    TickType_t wait = s_usbJtagTxStalled ? 0 : pdMS_TO_TICKS(250);
+
+    if (UsbSerialWrite((const uint8_t *)&message->m_header, sizeof(message->m_header), wait) !=
         sizeof(message->m_header))
     {
+        s_usbJtagTxStalled = true;
         return false;
     }
 
     if (message->m_header.m_size && message->m_payload)
     {
-        if (UsbSerialWrite(message->m_payload, message->m_header.m_size, pdMS_TO_TICKS(250)) !=
-            message->m_header.m_size)
+        if (UsbSerialWrite(message->m_payload, message->m_header.m_size, wait) != message->m_header.m_size)
         {
+            s_usbJtagTxStalled = true;
             return false;
         }
     }
 
+    s_usbJtagTxStalled = false;
     return true;
 }
 #endif // WP_USE_USB_JTAG
