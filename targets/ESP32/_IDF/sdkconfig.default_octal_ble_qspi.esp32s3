@@ -7,9 +7,10 @@
 #   CONFIG_SPIRAM_RODATA=y               # rodata segment in PSRAM
 #   CONFIG_SPIRAM_SPEED_80M=y            # 80 MHz vs default 40 MHz
 #
-# Plus CONFIG_LOG_DEFAULT_LEVEL_INFO=y so Memory.cpp's ESP_LOGI managed-heap
-# size report shows up in the COM9 boot console - we need that visibility
-# while bringing the panel up.
+# Log level is NONE, as upstream. (It was INFO for the 2026-04 panel bring-up, to see Memory.cpp's
+# ESP_LOGI heap report on the boot console. Since the 2026-10-01 upstream rebase the wire protocol runs
+# over USB-Serial-JTAG, the same channel as the IDF secondary console, so ESP_LOG output would land in
+# the middle of wire-protocol traffic.)
 
 CONFIG_IDF_CMAKE=y
 CONFIG_IDF_TARGET_ARCH_XTENSA=y
@@ -116,7 +117,7 @@ CONFIG_FREERTOS_TIMER_TASK_PRIORITY=5
 CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
 
 # Boot logs at INFO so we can see Memory.cpp's "Managed heap allocated: N (from max:M)"
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_DEFAULT_LEVEL_NONE=y
 
 CONFIG_LWIP_LOCAL_HOSTNAME="nanodevice"
 CONFIG_LWIP_MAX_SOCKETS=16
