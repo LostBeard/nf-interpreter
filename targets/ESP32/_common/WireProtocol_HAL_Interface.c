@@ -167,6 +167,17 @@ static uint8_t WP_TransmitMessageTinyUsb(WP_Message *message)
 static size_t UsbSerialWrite(const uint8_t *data, size_t dataSize, TickType_t xTicksToWait);
 static size_t UsbSerialRead(uint8_t *data, size_t dataSize, TickType_t xTicksToWait);
 
+// True after a transmit timed out because the host is not draining the USB-Serial-JTAG port. The cable is
+// still plugged in (usb_serial_jtag_is_connected() stays true), but no program has the COM port open, so the
+// TX ring buffer stays full. Without this, EVERY message (each Debug.WriteLine) waited the full 250 ms per
+// write - up to 500 ms per message, on the CLR thread, freezing all managed threads: a 9-line exception trace
+// cost ~4.5 s and touch input lagged 5-10 s whenever no host was attached. While stalled, writes don't wait
+// (whatever fits in the ring buffer goes, the rest is dropped - the host resyncs on the packet signature).
+// Cleared by any byte received from the host (a program is on the port, so replies to it must wait normally:
+// with a zero wait the first handshake replies of a deploy against a long-idle watch got dropped and the
+// debugger's Connect failed) and by any message that goes out complete.
+static bool s_usbJtagTxStalled = false;
+
 static bool WP_InitialiseUsbJtag(COM_HANDLE port)
 {
     (void)port;
@@ -277,18 +288,15 @@ static void WP_ReceiveBytesUsbJtag(uint8_t **ptr, uint32_t *size)
     const size_t read = UsbSerialRead(*ptr, *size, pdMS_TO_TICKS(250));
     ASSERT(read <= *size);
 
+    if (read > 0)
+    {
+        // the host is talking to us, so it is reading the port: transmit normally again
+        s_usbJtagTxStalled = false;
+    }
+
     *ptr += read;
     *size -= read;
 }
-
-// True after a transmit timed out because the host is not draining the USB-Serial-JTAG port. The cable is
-// still plugged in (usb_serial_jtag_is_connected() stays true), but no program has the COM port open, so the
-// TX ring buffer stays full. Without this, EVERY message (each Debug.WriteLine) waited the full 250 ms per
-// write - up to 500 ms per message, on the CLR thread, freezing all managed threads: a 9-line exception trace
-// cost ~4.5 s and touch input lagged 5-10 s whenever no host was attached. While stalled, writes don't wait
-// (whatever fits in the ring buffer goes, the rest is dropped - the host resyncs on the packet signature).
-// The first message that goes out complete (the host is reading again) clears it.
-static bool s_usbJtagTxStalled = false;
 
 static uint8_t WP_TransmitMessageUsbJtag(WP_Message *message)
 {
