@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) .NET Foundation and Contributors
 // Portions Copyright (c) Microsoft Corporation.  All rights reserved.
 // See LICENSE file in the project root for full license information.
@@ -112,7 +112,10 @@ __nfweak const CLR_UINT8 *CLR_SkipBodyOfOpcodeCompressed(const CLR_UINT8 *ip, CL
 
 #if defined(NANOCLR_TRACE_INSTRUCTIONS)
 
-__nfweak void CLR_RT_Assembly::DumpToken(CLR_UINT32 tk)
+__nfweak void CLR_RT_Assembly::DumpToken(
+    CLR_UINT32 tk,
+    const CLR_RT_MethodDef_Instance &methodDefInstance,
+    const CLR_RT_TypeSpec_Index *contextTypeSpec)
 {
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
 }
@@ -143,8 +146,10 @@ __nfweak void CLR_RT_Assembly::DumpOpcodeDirect(
     CLR_RT_MethodDef_Instance &call,
     CLR_PMETADATA ip,
     CLR_PMETADATA ipStart,
-    int pid)
+    int pid,
+    const CLR_RT_TypeSpec_Index *parentCtx)
 {
+    (void)parentCtx;
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
 }
 
@@ -182,9 +187,30 @@ __nfweak void CLR_RT_DUMP::TYPE(const CLR_RT_ReflectionDef_Index &reflex)
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
 }
 
-__nfweak void CLR_RT_DUMP::METHOD(const CLR_RT_MethodDef_Index &method)
+__nfweak void CLR_RT_DUMP::METHOD(const CLR_RT_MethodDef_Index &method, const CLR_RT_TypeSpec_Index *genericType)
 {
     (void)method;
+    (void)genericType;
+
+    NATIVE_PROFILE_CLR_DIAGNOSTICS();
+}
+
+__nfweak void CLR_RT_DUMP::METHOD(const CLR_RT_MethodDef_Instance &mdInst, const CLR_RT_TypeSpec_Index *genericType)
+{
+    (void)mdInst;
+    (void)genericType;
+
+    NATIVE_PROFILE_CLR_DIAGNOSTICS();
+}
+
+__nfweak void CLR_RT_DUMP::METHOD(
+    const CLR_RT_MethodDef_Instance &mdInst,
+    const CLR_RT_TypeSpec_Index *genericType,
+    const CLR_RT_TypeSpec_Index *parentCtx)
+{
+    (void)mdInst;
+    (void)genericType;
+    (void)parentCtx;
 
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
 }
@@ -234,7 +260,7 @@ __nfweak const char *CLR_RT_DUMP::GETERRORMESSAGE(HRESULT hrError)
     (void)hrError;
 
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
-    return NULL;
+    return nullptr;
 }
 
 //--//
@@ -246,7 +272,7 @@ __nfweak void *CLR_PROF_CounterCallChain::Prepare(CLR_PROF_Handler *handler)
     (void)handler;
 
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
-    return NULL;
+    return nullptr;
 }
 
 __nfweak void CLR_PROF_CounterCallChain::Complete(CLR_UINT64 &t, CLR_PROF_Handler *handler)
@@ -403,7 +429,7 @@ __nfweak CLR_RT_HeapBlock *CLR_PRF_Profiler::FindReferencedObject(CLR_RT_HeapBlo
     (void)ref;
 
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
-    return NULL;
+    return nullptr;
 }
 
 __nfweak void CLR_PRF_Profiler::DumpEndOfRefsList()

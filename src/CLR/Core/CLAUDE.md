@@ -1,0 +1,916 @@
+# Core runtime — generics implementation notes
+
+Companion to the source in this directory. Captures the architectural
+knowledge, gotchas, and debugging context for generics support in the CLR core
+(type system, interpreter, execution engine) so the source files can stay
+focused on the algorithms.
+
+**Documentation policy:** source comments in this directory stay minimal —
+only what's needed to flag a non-obvious invariant at the point it matters.
+Deductions, root-cause analysis, design rationale, and "why not the other
+approach" belong here, not as comment blocks in the `.cpp`/`.h` files. If
+you find yourself writing more than a one-line comment in the source, put
+the explanation here instead and leave a short pointer (or nothing) in the
+code.
+
+If you are about to read or modify any of these and the comment looks terse,
+the rationale is in here:
+
+- `TypeSystem.cpp` — `SignatureParser`, `FindVirtualMethodDef`,
+  `MatchSignatureForVirtualDispatch`, `TypeDef_Instance::InitializeFromToken`,
+  `MethodRef_Instance::InitializeFromToken`, `ResolveMethodRef`.
+- `Interpreter.cpp` — `CEE_CALLVIRT`, `CEE_NEWOBJ`, `CEE_BOX`,
+  `CEE_UNBOX_ANY`, `CEE_LDOBJ`, `CEE_STELEM_*`, `CEE_LDSFLD`/`CEE_STSFLD`/
+  `CEE_LDSFLDA`, the `CEE_CONSTRAINED` prefix handler, and
+  `EnsureGenericCctorCompleted` (§9–§10 below).
+- `Execution.cpp` — `ExecutionEngine_RunGenericStaticConstructors`,
+  `SpawnStaticConstructor`, `ResolveGenericTypeParameter`,
+  `InitializeLocals`.
+- `CLR_RT_HeapBlock.cpp` — `SetGenericInstanceType`, `TypeDescriptorsMatch`,
+  the `CLASS → GENERICINST` promotion path, `Relocate_Cls`.
+- `CLR_RT_HeapBlock_Lock.cpp` and `FindLockObject`/`LockObject` in
+  `Execution.cpp`, plus `HasObjectLockSlot`/`ObjectLock`/`SetObjectLock` in
+  `nanoCLR_Runtime__HeapBlock.h` (§13).
+
+Generics in this CLR are an active preview. Expect gaps. When something
+doesn't work, the first question is almost always *which generic context is
+this code path looking at?* — open vs closed TypeSpec, MethodSpec presence,
+arrayElementType fallback, `this`-object's stored TypeSpec.
+
+---
+
+## 1. Mental model
+
+**TypeDef vs TypeSpec.** A `TypeDef` is a class/struct declaration
+(`Dictionary\`2`). A `TypeSpec` is an *instantiation* — either open
+(`Dictionary<TKey,TValue>`, parameters still symbolic) or closed
+(`Dictionary<int,string>`, all parameters concrete). Generic dispatch is
+fundamentally about choosing the right closed TypeSpec for a given call site.
+
+**VAR / MVAR / GENERICINST.**
+- `DATATYPE_VAR` (`!N`) is a type-level generic parameter — `T` in
+  `class Foo<T>`.
+- `DATATYPE_MVAR` (`!!N`) is a method-level generic parameter — `T` in
+  `void Bar<T>()`.
+- `DATATYPE_GENERICINST` is the marker introducing a generic instantiation
+  in a signature. The element stream is: `GENERICINST` marker → CLASS or
+  VALUETYPE element carrying the *generic typedef* + arg count → that many
+  argument elements (each may itself be a nested `GENERICINST`).
+  It is a signature element type **only** — it is never the datatype of a
+  heap block. See §13.
+
+**How a closed TypeSpec is selected at a call site.** Roughly:
+
+1. If the IL has an explicit MethodSpec, use it (and its instantiation).
+2. Otherwise, if the MethodRef owner is itself a closed TypeSpec, use that.
+3. Otherwise, look at the caller's generic context (`stack->m_call.genericType`).
+4. Otherwise, recover a closed TypeSpec from the `this` object's stored
+   `HB_GenericInstance` TypeSpec.
+5. Otherwise, fall back to `arrayElementType` (runtime-inferred element type
+   from operations like `newarr T[]` or `ldelem.ref`).
+6. If everything fails, the call lands in a slot that can't resolve `VAR` and
+   typically surfaces as `CLR_E_WRONG_TYPE`.
+
+The priority order matters because some intermediates are *open* and would
+silently corrupt VAR resolution if used as if they were closed. See §4.
+
+---
+
+## 2. Signature parsing (`SignatureParser`)
+
+`Advance(Element &res)` walks one element of a signature at a time and
+*overwrites* `res` with the parsed element. Two consequences that have
+already bitten us:
+
+- **Never cache a field from `res` and then call `Advance(res)` again** —
+  the field is gone. The drain loop in `MatchSignatureForVirtualDispatch`
+  was buggy because it re-read `inner.GenParamCount` after `Advance(inner)`
+  overwrote `inner`. Drain by converging `Available()`, not by counting
+  arguments.
+- **`ParamCount` is the parser's remaining-element budget**, decremented by
+  every `Advance` call. It correctly accounts for nested generic args. Code
+  that drains a generic sub-tree should rely on `Available()` rather than
+  walking arg counts by hand — the parser already does the bookkeeping.
+
+`m_pendingGenericInst` is a one-shot flag. When `Advance` sees a
+`GENERICINST` marker it sets the flag; the next `CLASS`/`VALUETYPE` element
+then consumes its arg-count byte *unconditionally* — even for nested types
+whose own `genericParamCount` is zero (their TypeSpec still carries the
+enclosing-type args). The flag is cleared once consumed. Skipping this
+breaks nested generic enumerators (e.g. `Dictionary<,>.Enumerator`).
+
+---
+
+## 3. Virtual method dispatch on generics
+
+Implemented in `CLR_RT_TypeSystem::FindVirtualMethodDef` and the cache in
+front of it (`CLR_RT_EventCache::FindVirtualMethod`).
+
+### Explicit interface implementation name mangling
+
+C# compilers emit explicit interface implementations under the *expanded*
+qualified name, e.g.
+
+```
+System.Collections.Generic.ICollection<KeyValuePair<TKey,TValue>>.Remove
+```
+
+But `BuildTypeName` (used internally by the runtime to construct interface
+qualifiers for lookup) produces the *backtick* form:
+
+```
+System.Collections.Generic.ICollection`1.Remove
+```
+
+These never match by string equality. That's why `FindVirtualMethodDef`
+does three passes:
+
+1. **Backtick exact name** (e.g. `ICollection\`1.Remove`) — catches explicit
+   impls whose stored name happens to use the backtick form.
+2. **Suffix-only** match on `.<calleeName>` — catches explicit impls stored
+   under the expanded name. `suffixMatchOnly=true` rejects exact short-name
+   matches so that, e.g., `Dictionary.Remove(TKey)` does not shadow the
+   explicit `ICollection<KVP<,>>.Remove(KVP<,>)`.
+3. **Exact short name** — last-resort match for ordinary virtual methods.
+
+Each pass also has to pass the signature matcher (§3 below). Pass 3
+matching the *wrong* method is one of the most common failure modes: an
+explicit impl whose signature matcher silently fails falls through to a
+same-named public method with a compatible signature.
+
+### `MatchSignatureForVirtualDispatch` — VAR ↔ GENERICINST drain
+
+The interface side of an explicit impl uses type parameters (`VAR N` in the
+signature), while the concrete implementation side uses the expanded
+`GENERICINST` form. The matcher must accept the mismatch and drain the
+`GENERICINST` sub-tree on the expanded side so both parsers stay aligned.
+
+**The drain MUST work by convergence**, not by counting. The element stream
+for a generic instance is variable-depth (any argument can itself be a
+nested `GENERICINST`) and the per-element `GenParamCount` is only valid on
+the element that introduced the generic, not on its drained children.
+Correct pattern:
+
+```cpp
+int targetAvail = iAvailLeft - 1;     // simple-VAR side already advanced once
+while (parserRight.Available() > targetAvail) {
+    CLR_RT_SignatureParser::Element drained{};
+    if (FAILED(parserRight.Advance(drained))) return false;
+}
+```
+
+This consumes exactly one full parameter regardless of arity or nesting
+depth, because `ParamCount` already accounts for nested args. The previous
+arg-counting implementation only drained the first argument of
+`KeyValuePair<TKey,TValue>` and corrupted alignment for every multi-arg
+generic.
+
+### TypeSpec recovery from `this`
+
+When `CALLVIRT` resolves a `MethodRef` whose owner is an interface
+`TypeSpec` (e.g. `ICollection<KVP<int,string>>`), `ResolveToken` stores
+that interface TypeSpec on `calleeInst.genericType`. After virtual
+dispatch lands on the concrete implementation in `Dictionary<TKey,TValue>`,
+the stored TypeSpec is *for the wrong TypeDef* and would corrupt
+VAR resolution in the callee.
+
+Recovery: detect the mismatch (TypeSpec's `genericTypeDef` differs from the
+callee's declaring `TypeDef`), and try to pull the correct closed TypeSpec
+from the `this` heap-block's `HB_GenericInstance` slot
+(`thisHeap->ObjectGenericType()`). If recovery fails, **null is safer than
+a mismatched TypeSpec** — the callee will then fall back through the
+priority chain in §4 rather than confidently using the wrong context.
+
+---
+
+## 4. Generic context propagation (CALLVIRT / CALL)
+
+`CEE_CALLVIRT` and `CEE_CALL` set up the callee's `m_call.genericType`
+using a four-tier priority:
+
+1. **`effectiveCallerGeneric` if its TypeDef matches the callee's owner.**
+   Set by the upstream TypeSpec search that walks the caller's assembly to
+   find a closed TypeSpec whose `genericTypeDef` matches the `this`
+   object's `TypeDef`. This is the interface-callvirt case where the
+   compile-time MethodRef points at an interface but the runtime dispatch
+   lands on the concrete generic class.
+2. **`calleeInst.genericType` if it is closed.** Set by `ResolveToken`
+   from the MethodRef's owner TypeSpec, refined by MVAR resolution against
+   the caller's MethodSpec. The closed-only gate matters: an open TypeSpec
+   like `KeyValuePair<TKey,TValue>` cannot resolve VAR indices and causes
+   `CLR_E_WRONG_TYPE` deep inside the callee.
+3. **`effectiveCallerGeneric` as a fallback** when the TypeDef doesn't
+   match (covers cases where the search above found a TypeSpec but it
+   isn't a fit for the callee).
+4. **Caller's inherited `genericType`** — last resort.
+
+### PushInline vs Push
+
+The same priority logic is duplicated in the inline path and the regular
+push path. `PushInline` switches `stack->m_call` to the callee but does
+not apply generic-context inheritance on its own, so the CALLVIRT handler
+has to mirror the priority selection in both branches. **If you change
+the priority order, change it in both places** or generic dispatch will
+silently regress on whichever path you missed.
+
+### MethodSpec inheritance for open callee + MVAR
+
+When the callee's `genericType` is open (still contains MVAR), inherit the
+caller's `methodSpec` so the callee can close MVAR slots from the call
+site. Without this, generic-method calls like `Array.Empty<T>` from inside
+another generic method lose their MVAR binding.
+
+---
+
+## 5. VAR / MVAR resolution
+
+Lives in `CLR_RT_TypeDef_Instance::InitializeFromToken` (in
+`TypeSystem.cpp`). For both `DATATYPE_VAR` and `DATATYPE_MVAR` the chain
+is, in order:
+
+1. **Explicit `contextTypeSpec`** parameter — caller passes this when it
+   knows the closed TypeSpec to use (e.g. CALLVIRT passes
+   `stack->m_call.genericType`).
+2. **`caller->genericType`** — the inferred context from the caller's
+   stack frame.
+3. **`caller->arrayElementType`** — runtime-inferred element type set by
+   operations like `newarr T[]`, `ldelem.ref`, SZArrayHelper dispatch.
+   Used to close the first VAR slot on helper objects whose closed
+   context is inferred from a single runtime type.
+
+For MVAR specifically there is an additional **MVAR → VAR → concrete**
+two-level case used by the `constrained.` prefix on a generic method
+inside a generic class (e.g. `constrained.!!T` inside `Equals<TValue>`
+where `TValue` is itself a `VAR` in the enclosing `Dictionary<TKey,TValue>`).
+The MVAR resolves through the caller's MethodSpec, lands on a VAR, and
+then resolves through the caller's TypeSpec to the concrete type. **Nested
+MVAR is not implemented** (only one level of MVAR chaining is supported);
+an `_ASSERT` enforces this.
+
+### Null fallback
+
+For pre-allocation paths (e.g. `InitializeLocals` filling a struct array
+for an open generic type) a VAR that cannot resolve falls back to a null
+object reference. The reasoning: subsequent `stfld` instructions will
+overwrite with the correct type once the slot is actually written. Value
+types cannot be stubbed this way and fail outright.
+
+---
+
+## 6. `constrained.` prefix
+
+ECMA-335 §III.2.1: when `constrained. T` precedes `callvirt` and `T` is
+a *reference type*, the managed pointer on the stack must be dereferenced
+to the actual object reference. For *value types* the BYREF is kept — the
+callee receives it as `this`.
+
+The implementation resolves the `constrained` token via
+`CLR_RT_TypeDef_Instance::ResolveToken` and passes
+`stack->m_call.genericType` as `contextTypeSpec`. This enables the
+two-level MVAR → VAR → concrete resolution described in §5; without it,
+`constrained.!!T` inside a generic method on a generic class will resolve
+incorrectly.
+
+---
+
+## 7. `NEWOBJ` on generic types
+
+Constructors are special: the callee's `genericType` from `ResolveToken`
+often points at the *open* MethodRef TypeSpec (because the MethodRef
+itself was emitted against the open generic). The caller's
+`stack->m_call.genericType` is usually the *closed* TypeSpec we actually
+want.
+
+So `CEE_NEWOBJ` prefers the caller's context over the callee's own
+`genericType`, opposite to the §4 priority for `CALLVIRT`. The callee
+also inherits the caller's `methodSpec` when the constructor itself has
+an open generic signature, for the same reason as §4.
+
+---
+
+## 8. BOX / UNBOX.ANY / LDOBJ / STELEM on generics
+
+These all share a common pattern: when the opcode operates on a VAR (`!0`,
+`!1`, etc.) inside an interface adapter (e.g. `IList<T>.set_Item`), the
+adapter's `stack->m_call.genericType` may be *open*. To close the VAR slot
+we use the runtime type of the value (for `BOX`/`UNBOX.ANY`) or the
+runtime element type of the array (for `LDOBJ`/`STELEM_*`) to populate
+`arrayElementType`, which then flows into the §5 resolution chain.
+
+This mirrors what virtual dispatch does for `SZArrayHelper` calls
+(`Array.get_Item<T>` and friends), where the array's reflection data
+provides the element type. Same fix in three places; if you change one,
+audit the others.
+
+---
+
+## 9. Static fields on generic types
+
+`LDSFLD`/`STSFLD`/`LDSFLDA` on a generic type need both:
+- **TypeSpec context** for VAR resolution (the closed `T` of `Foo<T>`).
+- **MethodDef context** for MVAR resolution (the closed `!!U` of the
+  enclosing generic method, if any).
+
+Both are passed to the field-resolution helper. Missing either causes
+field-typed `VAR`/`MVAR` slots to resolve as the open parameter instead
+of the concrete type, which then breaks every subsequent read of that
+field.
+
+Field access on a generic type is also entangled with `.cctor` scheduling
+(§10). The interpreter enforces ECMA-335 §I.8.9.5 by calling
+`EnsureGenericCctorCompleted` **before** the field read/write. If the
+`.cctor` has not yet run, the helper pushes a stack frame for it on the
+current thread and the triggering opcode retries after the `.cctor`
+returns.
+
+### Storage layout
+
+A static field declared on an open generic TypeDef has **two** heap-block
+slots:
+
+- **Assembly-wide slot** (`assembly->staticFields`), reserved by
+  `ResolveLink` for every static FieldDef regardless of whether the
+  declaring type is generic. For generic-declared fields this slot is
+  **dead storage** — `GetStaticFieldByFieldDef` returns `nullptr` for a
+  generic access and does *not* fall through to it. But the GC still
+  walks the whole assembly-static array (`GarbageCollector.cpp`
+  `Assembly_Mark`, `TypeSystem.cpp` `Heap_Relocate`), so the block must
+  be validly typed. `ResolveAllocateStaticFields` (`TypeSystem.cpp`)
+  initializes these with `allowUnresolvedVarFallback = true` — a bare
+  `static T` field (`DATATYPE_VAR` at slot 0) becomes a null OBJECT
+  block, the same shape as a `static T[]` field. Without the fallback,
+  the VAR would abort `ClrStartup` at `Execution.cpp` line 2134.
+
+- **Per-instantiation slot** (`crossReferenceTypeSpec[..].genericStaticFields`),
+  the live storage returned by `GetStaticFieldByFieldDef` for the
+  matching closed TypeSpec. Allocated by
+  `ResolveAllocateGenericTypeStaticFields` at startup (for closed
+  TypeSpec rows in metadata) and by `AllocateGenericStaticFieldsOnDemand`
+  at runtime (for instantiations reached only through VAR/MVAR binding —
+  same population gap the demand gate in §10 handles for `.cctor`s).
+  Both call `InitializeReference` with the **closed TypeSpec instance**,
+  so a bare-VAR field like `static T DefaultValue` in
+  `Foo<int>` is stamped `I4` and in `Foo<string>` is stamped OBJECT.
+  Passing no instance here would leave every VAR field wrongly typed as
+  the OBJECT block that `CLR_AllocateGenericStaticFieldStorage` produced.
+
+### GC contract for the per-instantiation storage
+
+The per-instantiation slots are the one place in the CLR where an *array*
+of heap blocks is addressed by pointer arithmetic
+(`GetGenericStaticField` returns `&ts.genericStaticFields[i]`) while
+living outside a containing object. That forces three rules, and getting
+any of them wrong produces the same symptom: a static field read returns
+the contents of an unrelated heap block. When the block it lands on is a
+generic instance, the value comes back as a `CLR_RT_TypeSpec_Index` bit
+pattern such as `0x01000001` (§13).
+
+**1. The run must not be split.** `CLR_AllocateGenericStaticFieldStorage`
+allocates the slots as the payload of an unmovable
+`DATATYPE_BINARY_BLOB_HEAD` block (`ExtractHeapBlocksForEvents`, which
+adds `HB_Event`, hence `HB_Unmovable`). Compaction moves *maximal
+contiguous groups* of movable blocks into whatever free region is
+current, and ends a group when that region fills
+(`GarbageCollector_Compaction.cpp`, the `freeRegion_Size < len` break).
+So a bare run of N separately-movable size-1 blocks — what
+`ExtractHeapBlocksForObjects` gives you — can be broken in the middle,
+after which `m_fields[1]` points at an unrelated block while
+`m_fields[0]` is still correct. The blob header carries the whole run's
+`DataSize`, so the heap walk steps over the payload and compaction skips
+the run as a unit.
+
+*Rejected: pinning the slots individually.* Compaction tests
+`HB_Unmovable` per block, so every slot would need the flag, and slot
+flags do not survive. `InitializeReference` ends with
+`SetDataId(RAW_ID(dt, HB_Alive, 1))`, and `stsfld` on a reference-typed
+field goes through `AssignAndPreserveType`, which copies the whole `m_id`
+(flags included) from the eval-stack value whenever the slot's datatype
+is above `DATATYPE_LAST_PRIMITIVE_TO_PRESERVE`. The first write to a
+`static T` field would silently unpin the run.
+
+**2. Marking and relocation must walk the same array.** Both are driven
+from the global registry `g_CLR_RT_TypeSystem.m_genericStaticFields[]` —
+marking in `Assembly_Mark`, relocation in `CLR_RT_TypeSystem::Relocate`.
+Marking used to iterate per-assembly `crossReferenceTypeSpec` rows while
+relocation iterated the global array; a record reachable only from the
+registry (`FindOrCreateGenericStaticFields` creates exactly that shape,
+though it currently has no callers) would then be relocated but never
+marked, and freed while live.
+
+**3. Relocation runs once per pass, not once per assembly.**
+`Heap_Relocate(void**)` adds a region offset — it is *not* idempotent.
+`CLR_RT_Assembly::Relocate` is the `DATATYPE_ASSEMBLY` handler
+(`TypeSystemLookup.cpp`), so the heap walk calls it once per loaded
+assembly; driving the global registry from there shifted every pointer
+once per assembly. The hook is now `CLR_RT_ExecutionEngine::Relocate`,
+which `Heap_Relocate_Pass` calls exactly once after the walk.
+
+Because the payload is inside a blob the heap walk steps over, the slots'
+own contents are relocated *only* by
+`RelocateGenericStaticField` — that is why it still calls
+`Heap_Relocate(m_fields, m_count)`. Conversely `m_fields` itself never
+moves, so it is not relocated, and neither are the `tsCross` caches that
+copy it. `m_fieldDefs` is `platform_malloc`'d and was never a heap
+pointer; relocating it was always meaningless.
+
+### Nested generic construction
+
+When a generic `.cctor` constructs a **different** generic type parameterized
+by the holder's own type parameter (`Holder<T>` building `Box<T>`), the
+`newobj Box<!0>::.ctor()` leaves the callee's owner TypeSpec **open** because
+caller and callee have different typedefs — the §7 caller-preference does not
+fire. The pushed ctor frame inherits the open `Box<T>`, so `new T[]` inside
+the ctor can't resolve `T`; the `.cctor` aborts before `stsfld` and the
+static field stays null.
+
+Resolution is in `CEE_NEWOBJ` (after `GetDeclaringType`): parse the open
+owner TypeSpec, resolve each argument against the caller's closed TypeSpec
+via `GetGenericParam`, then either find a matching closed TypeSpec row in
+metadata or fall back to `arrayElementType` for single-VAR cases.
+
+**Invariant: never set both `genericType` and `arrayElementType`** on the
+same ctor frame — doing so corrupts `newarr`'s element-type resolution
+(native `AccessViolation`). The `arrayElementType` fallback is used **only**
+when no closed TypeSpec row exists.
+
+**Why not widen the `ResolveToken` gate:** `ResolveToken` has a closed-row
+search for MVAR / `arrayElementType` cases, gated so it skips pure-VAR
+callers. Widening that gate made the search fire for every generic
+`newobj`/`call`, crashing during startup `.cctor` crawling. The fix is
+scoped inside `CEE_NEWOBJ` behind a strict nested-case guard.
+
+---
+
+## 10. Generic `.cctor` lifecycle
+
+Two mechanisms cooperate:
+
+**Interpreter-level demand gate** (`EnsureGenericCctorCompleted` in
+`Interpreter.cpp`). Enforces ECMA-335 §I.8.9.5: the first
+`NEWOBJ`/`LDSFLD`/`STSFLD`/`LDSFLDA`/static `CALL` touching a closed
+generic type checks whether the `.cctor` has completed. The declaring
+TypeSpec may be **closed** (`List<int>`) or **open** (`SZGenericArray‑
+Enumerator<!!0>::Empty` accessed inside `List<int>::GetEnumerator`, where
+`!!0` binds to `int` only through the caller's method context). The gate
+handles both: it does not require `IsClosedGenericType()`, it requires
+only that `ComputeHashForClosedGenericType(tsInst, contextTypeSpec,
+contextMethod)` resolves the arguments to a concrete closed form (a
+`0xFFFFFFFF` hash — still open after resolution — short-circuits to
+`S_OK`). This open case matters because the crawler never covers it (see
+below), so the demand gate is the *only* thing that runs those `.cctor`s.
+
+Call contract (identical at all five call sites — `NEWOBJ`, static
+`CALL`, `LDSFLD`, `LDSFLDA`, `STSFLD`):
+- `S_OK` — nothing to do, proceed with the opcode as normal.
+- `CLR_E_PROCESS_EXCEPTION` — a `.cctor` frame was just pushed on the
+  current thread. The caller must rewind `ip` by 3 bytes (1 opcode + 2
+  compressed token — same width for all five opcodes) and
+  `goto Execute_Restart` so the `.cctor` runs as a nested call; when it
+  returns (`Pop`), the triggering opcode re-decodes from the rewound `ip`
+  and retries, now seeing initialized fields.
+- `CLR_E_RESCHEDULE` — the `.cctor` is already scheduled (by the crawler
+  or a prior trigger) but not yet done, and we're not re-entering it from
+  within itself. Rewind `ip` by 3 and yield via
+  `NANOCLR_SET_AND_LEAVE(CLR_E_RESCHEDULE)` so the cctor thread gets a
+  chance to run it.
+
+Internally: the helper marks the `CLR_RT_GenericCctorExecutionRecord` as
+both `c_Scheduled` and `c_Executed` *before* pushing the `.cctor` frame —
+this ordering is what prevents infinite re-entrant triggering if the
+`.cctor` body itself touches the same closed type. When the record is
+already `c_Scheduled`-but-not-`c_Executed` (crawler got there first), the
+helper walks the current thread's call stack looking for a `.cctor` frame
+for the same generic type; finding one means we're already inside it
+(re-entrant access from the `.cctor`'s own body), so it returns `S_OK`
+instead of yielding — yielding here would deadlock, since the thread
+would be waiting on a `.cctor` that only it can run. The pushed `.cctor`
+frame is given the declaring TypeSpec as its generic-type context so any
+VAR references inside the `.cctor` body resolve correctly; when that
+TypeSpec is *open*, the caller's `methodSpec` is also copied onto the
+frame so the body's `!0` resolves two-level (`!0` → TypeSpec slot → MVAR
+→ concrete), landing on the same closed instantiation the triggering
+field access resolved to.
+
+**Crawler** (`SpawnGenericTypeStaticConstructorsHelper` in
+`Execution.cpp` and `SpawnStaticConstructor`). Walks every assembly's
+`TypeSpec` table in a second phase (after all regular `.cctor`s), filters
+to closed instantiations, and schedules their `.cctor`s on the dedicated
+`m_cctorThread`. The crawler is resumable via
+`CLR_RT_HeapBlock_Delegate::m_genericTypeSpec`. Because the demand gate
+above fires earlier, the crawler typically only picks up instantiations
+that were never touched by user code — most `.cctor`s will already be
+marked `c_Executed` by the time the crawler reaches them. The crawler
+only sees instantiations that appear as **closed TypeSpec rows in
+metadata**; closed types that arise solely from runtime VAR/MVAR binding
+(e.g. `SZGenericArrayEnumerator<int>`, materialised inside a generic
+method) have no such row and are therefore reached *only* by the demand
+gate's open-TypeSpec path.
+
+---
+
+## 11. Cross-assembly generic method resolution
+
+`MethodRef_Instance::InitializeFromToken` handles the case where a generic
+method's MethodRef points into an assembly other than the calling assembly.
+The path:
+
+1. Find a MethodRef in the target assembly matching the method by name.
+2. Verify the MethodRef cross-reference points back to the original method
+   (signature match).
+3. If verification fails, keep the original method reference as a
+   conservative fallback.
+
+Same-assembly resolution is a fast path that doesn't need the rebind step.
+
+### `m_typeSpecStorage` lifetime
+
+`CLR_RT_MethodDef_Instance::genericType` is a *pointer*. If it pointed at
+the `typeSpec` parameter on the caller's stack, that pointer would dangle
+the moment `InitializeFromToken` returned. So the resolver copies the
+TypeSpec into `m_typeSpecStorage` (member field of the instance) and points
+`genericType` at the copy. **If you add a code path that sets `genericType`,
+make sure the value it points at outlives the instance.**
+
+---
+
+## 12. AppDomain bootstrap
+
+Mostly orthogonal to generics. Two facts worth knowing if you touch this:
+
+- `AppDomainAssembly` is linked to the `AppDomain` *before* its static
+  field allocation and `.cctor` scheduling complete. This is GC safety,
+  not performance: a GC during allocation has to find the partially-built
+  assembly via the AppDomain.
+- AppDomain zombie cleanup is intentionally deferred. Full cleanup would
+  require verifying that no managed driver, finalizable object, transparent
+  proxy, or timer still references the dead domain. None of that
+  infrastructure exists yet, so dead AppDomains are kept around as
+  zombies. This is a known limitation.
+
+The verbose explanations of these are still in `TypeSystem.cpp` because
+they're not generics-related.
+
+---
+
+## 13. Object header aliasing - monitor lock vs generic TypeSpec
+
+`CLR_RT_HeapBlock::m_data` is a union, and two of its members overlap
+exactly:
+
+```text
+m_data byte offset:      0    1    2    3  |  4    5    6    7
+                       --------------------+--------------------
+objectHeader           [    cls (4B)      ] | [   lock (ptr)   ]
+reflection             [kind(2)][levels(2)] | [ data.typeSpec  ]
+```
+
+`reflection.data` is always at offset 4. Where `lock` lands depends on
+pointer size and packing, and follows the same three cases already spelled
+out by `CLR_RT_HeapBlock_Raw` at the top of the header:
+
+- **32-bit targets** (ARM/Xtensa/RISC-V) — pointer is 4 bytes, so `lock` is
+  at offset 4. The overlap is total.
+- **MSVC, including `_WIN64`** — the runtime headers compile inside
+  `#pragma pack(push, ..., 4)` (`nanoCLR_Runtime.h`), so the 8-byte pointer
+  is not padded up and still starts at offset 4. `typeSpec` is its low
+  dword; the high dword is left zero by `HB_InitializeToZero`, which is why
+  a stored TypeSpec reads back as a small value such as `0x0000000001000002`.
+- **`__LP64__`** (macOS/Linux, `targets/posix`) — that pack pragma is
+  `#if defined(_MSC_VER)` only, so the pointer aligns naturally to 8 and
+  `lock` sits at offset 8. **The two do not overlap here.**
+
+Two consequences. The bug does not reproduce on the 64-bit POSIX build, so
+do not use that target to verify a change in this area. And the `CT_ASSERT`
+pinning the overlap is guarded with `#if !defined(__LP64__)` — without the
+guard it fails the posix build, which is a real signal, not a nuisance.
+
+`HasObjectLockSlot()` is correct on all three: on LP64 it simply routes
+generic instances through the thread-list lookup they would not strictly
+need there.
+
+`SetGenericInstanceType` writes the closed TypeSpec into that word for
+every generic instance, immediately after `SetObjectCls` has set
+`lock = nullptr` (`NewObject`, §7). A generic instance keeps
+`DATATYPE_CLASS`/`DATATYPE_VALUETYPE`; genericness is carried only by the
+`HB_GenericInstance` flag. The flag and the aliased write are set under the
+same condition, so `IsAGenericInstance()` is exactly the predicate *"this
+header word holds a TypeSpec."*
+
+### Why it cannot simply be un-aliased
+
+On 32-bit targets `m_data` is exactly 8 bytes (`cls` + `lock`). A third
+word grows **every** heap block from 12 to 16 bytes — a third of the whole
+managed heap. The object header has two 32-bit slots and generics took the
+second one.
+
+### The rule
+
+**A generic instance has no header lock slot.** `HasObjectLockSlot()` is
+the single predicate for this; `ObjectLock()` returns `nullptr` and
+`SetObjectLock()` is a no-op for anything it rejects.
+
+Generic instances are located by the thread-list search in
+`CLR_RT_ExecutionEngine::FindLockObject`, which walks
+`m_threadsReady`/`m_threadsWaiting` matching `lock->m_resource` by
+reference identity. That is **not** a fallback invented for generics — it
+is already the only lookup for everything that hits `default:` in the old
+datatype switch: `lock(someString)`, `lock(someArray)`, and every
+`[MethodImpl(Synchronized)]` *static* method (which locks a
+`DATATYPE_REFLECTION` block built in `CLR_RT_StackFrame`). Generic
+instances simply joined that set.
+
+The invariant it depends on — every live lock reachable from
+`m_threadsReady`/`m_threadsWaiting` — is already enforced by the GC:
+`Thread_Mark` runs on exactly those two lists and is the only thing that
+marks `lock->m_resource`. A lock reachable only from `m_threadsZombie`
+would already have had its resource collected.
+
+Consequences elsewhere:
+- `Relocate_Cls` must not relocate that word for a generic instance. This
+  is hardening rather than a live bug — lock nodes carry `HB_Event`, hence
+  `HB_Unmovable`, so compaction never moves them and the relocation is a
+  no-op for real locks.
+- `Profiler` dumping `ObjectLock()` gets `nullptr`, same as an unlocked
+  object.
+- The GC reachability marker never touches the header word (it walks
+  `ptr + 1` onward), so there is nothing to change there.
+
+A `CT_ASSERT` next to the union members pins
+`offsetof(ObjectHeader, lock) == offsetof(CLR_RT_ReflectionDef_Index, data)`
+so a packing change breaks the build instead of the runtime.
+
+### Rejected alternatives
+
+- **A `HB_HasLock` flag bit plus displacing the TypeSpec into the lock
+  node.** Architecturally the right destination and what the desktop CLR
+  does, but `m_id.type.flags` is a `CLR_UINT8` with all eight bits
+  assigned. The header offers `HB_Signaled`/`HB_SignalAutoReset` as
+  reclaimable, but those are wanted for the C# `async`/`await` work, and
+  freeing them means reworking `CLR_RT_HeapBlock_WaitForObject`,
+  `ManualResetEvent`, `AutoResetEvent`, `WaitHandle` and `Thread.Join`.
+- **A tag bit in the TypeSpec encoding (`(data << 1) | 1`) plus
+  displacement.** Exact and spends no flag bit, but costs a bit of
+  assembly-index range and needs save/restore pairing that must be exact
+  across `CreateInstance`, `ChangeOwner`, `DestroyOwner`, thread teardown
+  and AppDomain unload — a silent-corruption failure mode in exchange for
+  a lookup win that is single-digit iterations on these devices.
+- **Discriminating by inspecting the value.** Every variant is a
+  heuristic. Reading the pointee's `DATATYPE_LOCK_HEAD` tag or
+  round-tripping through `lock->m_resource` both dereference a value that
+  may not be a pointer — on an MMU-less MCU that returns garbage instead
+  of faulting. Validating it as a TypeSpec via `InitializeFromIndex`
+  avoids the dereference but reduces to "is the top byte a loaded assembly
+  index?", which holds only by memory-map coincidence.
+
+---
+
+### One representation for generic instances
+
+A generic instance is a `DATATYPE_CLASS`/`DATATYPE_VALUETYPE` block carrying
+`HB_GenericInstance`, with its closed TypeSpec in the aliased word described
+above. That is the only representation. `DATATYPE_GENERICINST` is a signature
+element type (§1) and must never appear as a heap-block datatype.
+
+There used to be a second representation. `NewGenericInstanceObject` allocated
+`DATATYPE_GENERICINST` blocks for the `unbox`-a-`Nullable<T>` path, and those
+blocks were never finished:
+
+- the TypeSpec was never actually stored — the setter call sat commented out in
+  `ExtractHeapBlocksForGenericInstance`, so `ObjectGenericType()` read zero;
+- the datatype was absent from the switch in
+  `GarbageCollector_ComputeReachabilityGraph.cpp`, so the block was marked alive
+  but its fields were never traced — a reference held only by such a block was
+  collected while live;
+- `TypeSystemLookup.cpp` gave it `DT_NOREL`, so its field references were never
+  fixed up during compaction;
+- `IsAGenericInstance()` returned false for it, because the allocator never set
+  `HB_GenericInstance`.
+
+About ten other datatype switches — `InitializeFromObject`,
+`ExtractTypeIndexFromObject`, `EnsureObjectReference`, `GetHashCode`,
+`ObjectsEqual`, `Compare_Values`, `Reassign`, `CloneObject` — rejected such a
+block outright, so it could not be cast, hashed, compared or cloned either.
+
+It was removed rather than completed. `InitializeLocals` and `CloneObject` had
+already been migrated to `NewObject` — the `if (isGenericInstance)` branch sat
+commented out beside the live call — leaving one unconverted call site. Finishing
+the second representation would have meant re-integrating it with the GC, the
+type descriptor, hashing, equality, cloning and casting merely to reach parity
+with what `NewObject` already produced.
+
+The two GC defects were silent rather than crashing, which is what decided it:
+deleting the allocator makes them unreachable by construction, a stronger
+guarantee than adding the missing handlers and then having to remember this
+datatype in every future switch.
+
+**Design rule.** A new heap-block datatype is not done until it appears in
+`GarbageCollector_ComputeReachabilityGraph.cpp`, has a non-null `m_relocate`
+entry in `TypeSystemLookup.cpp`, and is handled in
+`CLR_RT_TypeDescriptor::InitializeFromObject`.
+
+---
+
+## 14. Build + debug workflow
+
+### Build the netcore CLR DLL
+
+```
+MSBuild targets/netcore/nanoFramework.nanoCLR/nanoFramework.nanoCLR.vcxproj \
+  -p:Configuration=Debug -p:Platform=x64
+```
+
+Produces `build/bin/Debug/nanoFramework.nanoCLR.dll`. The Win32 CLI
+(`build/bin/Debug/net8.0/nanoFramework.nanoCLR.CLI.exe`) loads the native
+DLL from its `NanoCLR/` subdirectory, so after rebuilding you must
+**copy**:
+
+```
+cp build/bin/Debug/nanoFramework.nanoCLR.dll \
+   build/bin/Debug/net8.0/NanoCLR/nanoFramework.nanoCLR.dll
+```
+
+(MSBuild does not auto-deploy. If the CLI exhibits stale behavior after a
+rebuild, you forgot the copy.)
+
+### Run the generics unit tests
+
+The "run unit tests" launch profile of the CLI project (see
+`targets/netcore/nanoFramework.nanoCLR.CLI/Properties/launchSettings.json`)
+loads the test assemblies from
+`E:/GitHub/nf-System.Collections/Tests/GenericCollections/bin/Debug/`:
+
+```
+mscorlib.pe
+nanoFramework.System.Collections.pe
+nanoFramework.TestFramework.pe
+nanoFramework.UnitTestLauncher.pe
+NFUnitTest.pe
+```
+
+The order matters — assemblies referenced later in the list see earlier
+ones already loaded. Output lines starting with `Test passed,` or
+`Test failed,` indicate per-test outcomes.
+
+### Diagnostic instrumentation pattern
+
+Use `CLR_Debug::Printf` gated on `VIRTUAL_DEVICE` for temporary trace
+output. Pattern:
+
+```cpp
+#if defined(VIRTUAL_DEVICE)
+    CLR_Debug::Printf("[TAG] field=%08x other=%d\r\n", a, b);
+#endif
+```
+
+Choose a stable prefix tag (`[VMDDIAG]`, `[SIGDIAG]`) so you can filter
+the noisy CLI output via grep. Strip the instrumentation before commit —
+the codebase deliberately keeps verbose tracing out of release builds.
+
+The full IL execution trace that some sessions reference comes from the
+interpreter's tracing macros (already in `Interpreter.cpp` — search for
+the `Execute_IL` tracing block). It's expensive and only useful when you
+need step-by-step visibility into opcode dispatch.
+
+---
+
+## 15. Known failure-mode catalog
+
+When you see one of these symptoms, this is where to look first.
+
+**`CLR_E_WRONG_TYPE` on `callvirt`.**
+- Walk the `FindVirtualMethodDef` 3-pass chain (§3). Most commonly the
+  signature matcher silently fails on an explicit interface impl and the
+  call falls through to an unrelated public method or to "not found."
+- Check whether the call site is on a generic interface (`ICollection<KVP>`)
+  whose concrete impl is the explicit-interface form on the closed
+  generic class.
+
+**Explicit interface impl shadowed by same-named public method.**
+- The suffix-only pass in `FindVirtualMethodDef` exists exactly to prevent
+  this. If a public method like `Dictionary.Remove(TKey)` is being called
+  when `ICollection<KVP<,>>.Remove(KVP<,>)` should fire, the suffix-only
+  match did not find the explicit impl. Almost always a signature-matcher
+  bug. See §3.
+
+**VAR unresolved at runtime.**
+- The `arrayElementType` propagation chain (§5/§8) is broken somewhere
+  upstream. Check whether the opcode that introduced the value into the
+  current frame set `arrayElementType` correctly — usually `newarr`,
+  `ldelem.ref`, `box`, or an SZArrayHelper dispatch.
+
+**Open TypeSpec reaching a callee.**
+- The §4 priority-2 closed-only gate is the first place to look. If a
+  priority-2 result is being picked up when it shouldn't (because the
+  callee's `genericType` is open), the gate is missing or wrong.
+
+**A generic static field reads back as `0x0100000N` (or any unrelated
+value) only when the GC compacts.**
+- Reproduce with **both** `--forcegc` and `--compactionaftergc`;
+  `--forcegc` alone only marks and sweeps, and the bug will not show.
+- The storage array was split, mis-relocated, or swept. Check the three
+  rules in §9 "GC contract for the per-instantiation storage" — the
+  symptom is identical for all three.
+- A crash (host exit code 3) on the *next* generic-static test rather
+  than a bad value is the same bug reaching a slot that holds an object
+  reference instead of an `int`.
+
+**Generic `.cctor` not firing or firing twice.**
+- `FindOrCreateGenericStaticFields` hash mismatch — two TypeSpec rows
+  encode the same closed type but hash differently, or vice versa. See §10.
+- Alternatively, the resumption logic on `SpawnStaticConstructor` lost the
+  TypeSpec index (`m_genericTypeSpec.data` zeroed prematurely).
+
+**Access violation in `CLR_RT_HeapBlock_Lock::IncrementOwnership`, `lock`
+argument is a small value like `0x01000002`.**
+- That is not a corrupt pointer, it is a `CLR_RT_TypeSpec_Index`
+  (`assembly << 24 | index`) being read out of the aliased header word.
+  Something handed a generic instance's header to the monitor code. See
+  §13.
+
+**Generic dispatch or `MemberwiseClone` breaks after a `lock` on the same
+instance.**
+- The mirror image: a lock pointer was stored over the instance's closed
+  TypeSpec. Check that the write went through `SetObjectLock` rather than
+  touching `m_data.objectHeader.lock` directly. See §13.
+
+**`Dictionary<TKey,TValue>` constructor from an `IDictionary<,>` crashes.**
+- Specific instance of the suffix-only / signature-matcher bug. The
+  `IEnumerable<KVP<,>>.GetEnumerator` explicit impl must be found by
+  pass 2 of `FindVirtualMethodDef`. If `MatchSignatureForVirtualDispatch`
+  mishandles the VAR↔GENERICINST drain (specifically for multi-argument
+  generics like `KeyValuePair<,>`), this is the symptom.
+
+---
+
+## 16. `Span<T>`/`ReadOnlySpan<T>` storage-pointer arrays and GC
+
+Not generics-specific, but the same "storage array split/mis-relocated/
+swept" family as §9, so documented the same way: rationale here, source
+stays terse.
+
+**Background.** `Span<T>`'s native backing (`corlib_native_System_Span_1.cpp`,
+`corlib_native_System_ReadOnlySpan_1.cpp`) doesn't reuse the wrapped
+`T[]`'s `CLR_RT_HeapBlock_Array` directly — it allocates a second, small
+"shell" `CLR_RT_HeapBlock_Array` via `CreateInstanceWithStorage` whose
+`ReflectionData().kind == REFLECTION_STORAGE_PTR`. The shell has no
+element storage of its own; `GetFirstElement()` returns a raw
+`m_StoragePointer` address that points into the *original* array's
+element data (or, for the `Span(void*, int)` ctor, into unmanaged
+memory). This lets slicing/wrapping avoid copying.
+
+**The bug.** Originally the shell held nothing but that raw address —
+no `CLR_RT_HeapBlock` reference back to the array that actually owns the
+memory. Two independent failures followed from that:
+1. **Reachability.** `ComputeReachabilityGraphForMultipleBlocks`'s
+   `DATATYPE_SZARRAY` case only marks an array's *elements* reachable,
+   and only when `m_fReference` is set (never true for a shell, since
+   `Span<T>` rejects reference-containing `T`). Nothing marked the
+   *owning* array reachable through the shell, so a temporary like
+   `new Span<int>(new int[n])` had no live reference to the backing
+   `int[]` once the constructor returned — `--forcegc` would sweep it,
+   filling it with `SENTINEL_RECOVERED` (`0xDFDFDFDF`,
+   `CLR_RT_HeapCluster::RecoverFromGC` in `CLR_RT_HeapCluster.cpp`) while
+   the shell's raw pointer kept pointing at that now-dead memory. This is
+   the `CopyTo_WithLargeArray_ShouldCopyAllElements` failure signature:
+   `Actual:<-538976289>` is `0xDFDFDFDF` as `int32`.
+2. **Compaction.** Even had the owner survived sweep, `m_StoragePointer`
+   is a bare address with no type tag — `CLR_RT_HeapBlock_Array::Relocate()`
+   had no way to know it needed adjusting when the owner's element data
+   physically moved, so it would go stale across `--compactionaftergc`
+   too.
+
+The reachability failure reproduces with `--forcegc`; add
++`--compactionaftergc` to exercise the relocation failure.
+About 1 run in 9–10 failed under both flags before the fix, which is why
+a single clean run proves nothing here (loop 15–20×, see §14).
+
+**The fix.** `CreateInstanceWithStorage` now takes an `owner` reference
+(the array actually backing the memory — `nullptr` for the unmanaged-
+memory ctor) and allocates one extra `sizeof(CLR_RT_HeapBlock)` of
+storage beyond the shell's header (`extraBytes` threaded through
+`CLR_RT_HeapBlock_Array::CreateInstance` → `CLR_RT_ExecutionEngine::
+ExtractHeapBlocksForArray`). That slot — `StorageOwner()`, aliasing the
+same `&this[1]` address a normal array would use for element 0, which is
+otherwise unused on a storage-pointer shell — holds a real
+`SetObjectReference` to the owner. `ComputeReachabilityGraphForMultipleBlocks`
+marks it explicitly for `IsStoragePointer()` arrays, so the owner is
+reachable transitively through the shell like any other object
+reference. `CLR_RT_HeapBlock_Array::Relocate()` relocates that reference
+via the normal `Heap_Relocate(CLR_RT_HeapBlock*, 1)` path, then relocates
+`m_StoragePointer` itself via the generic `Heap_Relocate(void**)` address-
+range lookup — safe because that call only rewrites the stored address
+value by table lookup, it never dereferences memory at the (possibly
+not-yet-moved) target, so ordering within the compaction pass doesn't
+matter. A shell built over a shell (e.g. `Span.Slice` of a `Span`) chains
+correctly with no special-casing: each shell only tracks its immediate
+`sourceArray`, and marking/relocation recurse through the chain via the
+same generic per-object dispatch.
+
+**If you see `SENTINEL_RECOVERED` (`0xDFDFDFDF`) or a stale value read
+through a `Span<T>`/`ReadOnlySpan<T>`:**
+- Confirm it reproduces only with `--forcegc` (sweep) or needs
+  `--compactionaftergc` too (relocation) — tells you which of the two
+  mechanisms above is implicated.
+- Check that the shell's `StorageOwner()` was actually set (i.e. the
+  constructor path went through the array-backed `CreateInstanceWithStorage`
+  call, not the raw-pointer one, which intentionally has no owner).

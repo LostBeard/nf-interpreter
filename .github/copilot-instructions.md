@@ -56,7 +56,7 @@ Kconfig*              # Kconfig configuration system (feature flags, APIs, RTOS,
 
 - **CMake 3.31+** and **Ninja** build system.
 - Cross-compilation toolchains (ARM GCC, Xtensa GCC, RISC-V GCC) depending on target.
-- Platform SDKs (ESP-IDF v5.5.4, ChibiOS, ThreadX, etc.).
+- Platform SDKs (ESP-IDF v5.5.5, ChibiOS, ThreadX, etc.).
 - Python 3 with `kconfiglib>=14.1.0` (from `requirements.txt`).
 - **Dev containers** are the recommended way to build. Pre-built images:
   - `ghcr.io/nanoframework/dev-container-all` (all platforms)
@@ -103,8 +103,8 @@ There is no standalone test suite or test runner in this repository. Testing is 
 
 ### Language Standards
 
-- **C++20** (`stdcpp20`) for C++ files (`.cpp`).
-- **C17** (`stdc17`) for C files (`.c`).
+- **C++23** (`stdcpp23`) for C++ files (`.cpp`).
+- **C23** (`stdc23`) for C files (`.c`).
 - HAL-level code tends to be C; CLR, PAL, and device API code is C++.
 
 ### Formatting
@@ -160,7 +160,7 @@ The project uses **Kconfig** (via Python `kconfiglib`) for feature and API confi
 - **RTOS selection**: `CONFIG_RTOS_ESP32`, `CONFIG_RTOS_CHIBIOS`, `CONFIG_RTOS_FREERTOS`, `CONFIG_RTOS_TI_SIMPLELINK`, `CONFIG_RTOS_THREADX`.
 - **API toggles**: `CONFIG_API_SYSTEM_DEVICE_GPIO=y`, `CONFIG_API_SYSTEM_NET=y`, etc.
 - **Feature flags**: `CONFIG_NF_FEATURE_DEBUGGER`, `CONFIG_NF_FEATURE_HAS_SDCARD`, `CONFIG_NF_FEATURE_USE_LITTLEFS`, etc.
-- **Build modes**: `CONFIG_NF_BUILD_RTM=y` for release builds (suppresses debug output).
+- **Build modes**: `CONFIG_NF_BUILD_RTM=y` (or `NF_BUILD_RTM` in Kconfig) enables the RTM (release) build. `nf_genconfig.py` mirrors this into `nf_config.h` as both `CONFIG_NF_BUILD_RTM` and a source-facing `BUILD_RTM` alias — C/C++ code gates on `#if defined(BUILD_RTM)`, never on `CONFIG_NF_BUILD_RTM` directly. This only applies to Kconfig-driven targets; `netcore`, `win32`, and `posix` build via MSBuild/plain CMake and never define `BUILD_RTM`.
 
 When modifying Kconfig files, respect the naming conventions:
 - `NF_FEATURE_HAS_*` — hardware capability is present.
@@ -186,7 +186,8 @@ Each target board has:
 
 Follow the PR template at `.github/PULL_REQUEST_TEMPLATE.md`:
 - Provide a description, motivation/context, and testing details.
-- **Linking issues**: Use exactly one of the accepted verbs `Fixes`, `Closes`, or `Resolves` followed by the issue reference. All issues are tracked in the **Home** repository, so the pattern is always `Fixes/Closes/Resolves nanoFramework/Home#NNNN`. The template lists all three verbs — remove the ones that don't apply, leaving only the one verb and the correct issue number.
+- **Linking issues**: Use exactly one of the accepted verbs for GitHub mapping (`Fixes`, `Closes`, or `Resolves`) followed by the issue reference. All issues are tracked in the **Home** repository, so the pattern is always `Fixes/Closes/Resolves nanoFramework/Home#NNNN`. The template lists all three verbs — remove the ones that don't apply, leaving only the one verb and the correct issue number.
+- Sometimes a PR may not fully resolve an issue but only addresses part of it. In that case, link the issue in the description but do not use the closing verbs in the issue reference (e.g., "Progress towards nanoFramework/REPO-NAME#NNNN" or "Related to nanoFramework/REPO-NAME#NNNN") so the issue remains open until fully resolved.
 - **Change type checkboxes**: Tick **only** the boxes that genuinely describe the change. Each checkbox has a description of what it covers. The categories are mutually exclusive in intent:
   - `Improvement`, `Bug fix`, `New feature`, `Breaking change` — for changes to **source code and algorithms only**.
   - `Config and build` — for changes to the build system, CMake, pipelines, or Kconfig; **not** for source code bugs or features.
@@ -194,8 +195,18 @@ Follow the PR template at `.github/PULL_REQUEST_TEMPLATE.md`:
   - `Dependencies/declarations` — for dependency updates or assembly declaration changes only.
   - `Documentation` — for documentation-only changes.
   - Do **not** tick multiple categories from different groups (e.g., do not tick both `Bug fix` and `Config and build` for a pipeline fix — only `Config and build` applies).
+  - Do **not** remove check box that aren't ticked — the template is designed to cover all change types, so if a box doesn't apply, simply leave it unticked but do not delete it.
 - Ensure code follows the project style (`.clang-format`).
 - Contributing guidelines are at `https://github.com/nanoframework/.github/blob/main/CONTRIBUTING.md`.
+
+## Subsystem Knowledge Files
+
+The repository includes knowledge files (`CLAUDE.md`) that capture hard-won debugging insights, architectural invariants, and failure-mode catalogs. These are essential reading when working on the corresponding subsystems:
+
+- **`CLAUDE.md`** (repo root) — build system, repository architecture, feature configuration, code conventions, CI/CD, and PR guidelines.
+- **`src/CLR/Core/CLAUDE.md`** — CLR runtime internals: generics type system (VAR/MVAR/GENERICINST resolution), signature parsing invariants, virtual method dispatch on generic interfaces, generic context propagation, constrained. prefix semantics, generic `.cctor` lifecycle, cross-assembly resolution, and a known failure-mode catalog.
+
+Consult the relevant file before modifying code in that area — it documents non-obvious invariants that are not captured in code comments.
 
 ## Common Pitfalls and Workarounds
 
@@ -205,4 +216,4 @@ Follow the PR template at `.github/PULL_REQUEST_TEMPLATE.md`:
 4. **Kconfig Python dependency**: The Kconfig system requires `kconfiglib` (`pip install kconfiglib`). This is needed for `cmake --preset` to work.
 5. **Submodules**: The repo has a submodule for community targets (`targets-community`). Clone with `--recurse-submodules` or run `git submodule update --init`.
 6. **File encoding**: Most files use UTF-8 with BOM and CRLF line endings (see `.editorconfig`). Kconfig files must NOT have BOM.
-7. **ESP32 targets**: ESP-IDF v5.5.4 is the pinned SDK version. The ESP32 build integrates with the IDF build system (idf.py/CMake).
+7. **ESP32 targets**: ESP-IDF v5.5.5 is the pinned SDK version. The ESP32 build integrates with the IDF build system (idf.py/CMake).

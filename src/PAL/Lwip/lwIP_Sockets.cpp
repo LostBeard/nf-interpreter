@@ -87,7 +87,7 @@ HRESULT LWIP_SOCKETS_Driver::Link_status(uint32_t interfaceIndex, bool *status)
     struct netif *networkInterface =
         netif_find_interface(g_LWIP_SOCKETS_Driver.m_interfaces[interfaceIndex].m_interfaceNumber);
 
-    if (NULL == networkInterface)
+    if (nullptr == networkInterface)
     {
         return CLR_E_FAIL;
     }
@@ -299,11 +299,11 @@ bool LWIP_SOCKETS_Driver::Initialize()
     int interfaceNumber;
 
 #if LWIP_NETIF_STATUS_CALLBACK == 1
-    PostAddressChangedContinuation.InitializeCallback(PostAddressChanged, NULL);
+    PostAddressChangedContinuation.InitializeCallback(PostAddressChanged, nullptr);
 #endif
 #if LWIP_NETIF_LINK_CALLBACK == 1
-    PostAvailabilityOnContinuation.InitializeCallback(PostAvailabilityOn, NULL);
-    PostAvailabilityOffContinuation.InitializeCallback(PostAvailabilityOff, NULL);
+    PostAvailabilityOnContinuation.InitializeCallback(PostAvailabilityOn, nullptr);
+    PostAvailabilityOffContinuation.InitializeCallback(PostAvailabilityOff, nullptr);
 #endif
 
     // create m_interfaceNumber array
@@ -373,6 +373,33 @@ extern void debug_printf(const char *format, ...);
 SOCK_SOCKET LWIP_SOCKETS_Driver::Socket(int family, int type, int protocol)
 {
     NATIVE_PROFILE_PAL_NETWORK();
+
+    // Validate socket type+protocol combination
+    bool validTypeProtocol;
+
+    if (type == SOCK_SOCK_STREAM)
+    {
+        validTypeProtocol = (protocol == SOCK_IPPROTO_IP || protocol == SOCK_IPPROTO_TCP);
+    }
+    else if (type == SOCK_SOCK_DGRAM)
+    {
+        validTypeProtocol = (protocol == SOCK_IPPROTO_IP || protocol == SOCK_IPPROTO_UDP);
+    }
+    else if (type == SOCK_SOCK_RAW)
+    {
+        // Raw sockets require an explicit IP protocol number (0-255), SOCK_IPPROTO_IP (0) is not a valid choice
+        validTypeProtocol = (protocol > SOCK_IPPROTO_IP && protocol <= 255);
+    }
+    else
+    {
+        validTypeProtocol = false;
+    }
+
+    if (!validTypeProtocol)
+    {
+        errorCode = EPROTONOSUPPORT;
+        return SOCK_SOCKET_ERROR;
+    }
 
     switch (family)
     {
@@ -577,7 +604,7 @@ SOCK_SOCKET LWIP_SOCKETS_Driver::Accept(SOCK_SOCKET socket, SOCK_sockaddr *addre
         Sock_SockaddrToSockaddr(address, (sockaddr *)&addr, addressLen);
     }
 
-    ret = lwip_accept(socket, address ? (sockaddr *)&addr : NULL, (u32_t *)addressLen);
+    ret = lwip_accept(socket, address ? (sockaddr *)&addr : nullptr, (u32_t *)addressLen);
 
     if (address)
     {
@@ -602,9 +629,9 @@ SOCK_addrinfo *CreateAddressRecord(
     const SOCK_addrinfo *hints)
 {
     SOCK_addrinfo *ai;
-    SOCK_sockaddr_in *sa = NULL;
+    SOCK_sockaddr_in *sa = nullptr;
 #if LWIP_IPV6
-    SOCK_sockaddr_in6 *sa6 = NULL;
+    SOCK_sockaddr_in6 *sa6 = nullptr;
 #endif
     int total_size = sizeof(SOCK_addrinfo);
     int canonNameSize;
@@ -617,7 +644,7 @@ SOCK_addrinfo *CreateAddressRecord(
 #endif
 
     // Allow for canon name if available
-    if (canonname != NULL)
+    if (canonname != nullptr)
     {
         // Size including terminator so we allocate name after SOCK_addrinfo + SOCK_sockaddr_in
         canonNameSize = hal_strlen_s(canonname) + 1;
@@ -625,10 +652,10 @@ SOCK_addrinfo *CreateAddressRecord(
     }
 
     ai = (SOCK_addrinfo *)mem_malloc(total_size);
-    if (ai == NULL)
+    if (ai == nullptr)
     {
         // Out of memory
-        return NULL;
+        return nullptr;
     }
 
     memset(ai, 0, total_size);
@@ -671,7 +698,7 @@ SOCK_addrinfo *CreateAddressRecord(
     // set up addrinfo
     ai->ai_family = family;
 
-    if (hints != NULL)
+    if (hints != nullptr)
     {
         // copy socktype & protocol from hints if specified
         ai->ai_socktype = hints->ai_socktype;
@@ -679,7 +706,7 @@ SOCK_addrinfo *CreateAddressRecord(
     }
 
     // Copy in canon name if available
-    if (canonname != NULL)
+    if (canonname != nullptr)
     {
         ai->ai_canonname = (char *)ai + total_size - canonNameSize;
         memcpy(ai->ai_canonname, canonname, canonNameSize);
@@ -699,19 +726,19 @@ int LWIP_SOCKETS_Driver::GetAddrInfo(
 #if LWIP_DNS
     NATIVE_PROFILE_PAL_NETWORK();
 
-    SOCK_addrinfo *ai = NULL;
-    SOCK_addrinfo *nextAi = NULL;
+    SOCK_addrinfo *ai = nullptr;
+    SOCK_addrinfo *nextAi = nullptr;
     struct addrinfo *lwipAddrinfo = {0};
 
-    if (res == NULL || nodename == NULL)
+    if (res == nullptr || nodename == nullptr)
     {
         return SOCK_SOCKET_ERROR;
     }
 
-    *res = NULL;
+    *res = nullptr;
 
     // if the nodename == "" then return the IP addresses of this device
-    if (nodename[0] == 0 && servname == NULL)
+    if (nodename[0] == 0 && servname == nullptr)
     {
         // Work through all available Network Interfaces in reverse so link list ends up with lowest index first.
         for (int i = g_TargetConfiguration.NetworkInterfaceConfigs->Count - 1; i >= 0; i--)
@@ -719,7 +746,7 @@ int LWIP_SOCKETS_Driver::GetAddrInfo(
             struct netif *networkInterface =
                 netif_find_interface(g_LWIP_SOCKETS_Driver.m_interfaces[i].m_interfaceNumber);
 
-            if (networkInterface == NULL)
+            if (networkInterface == nullptr)
             {
                 continue;
             }
@@ -747,8 +774,8 @@ int LWIP_SOCKETS_Driver::GetAddrInfo(
                     addr = networkInterface->ip6_addr[addresses - 1];
                 }
 #endif
-                ai = CreateAddressRecord(family, addr, 0, NULL, hints);
-                if (ai == NULL)
+                ai = CreateAddressRecord(family, addr, 0, nullptr, hints);
+                if (ai == nullptr)
                 {
                     // Out of memory ?
                     return SOCK_SOCKET_ERROR;
@@ -760,7 +787,7 @@ int LWIP_SOCKETS_Driver::GetAddrInfo(
             }
         }
 
-        if (ai == NULL)
+        if (ai == nullptr)
         {
             // No addresses to return
             return -1;
@@ -793,7 +820,7 @@ int LWIP_SOCKETS_Driver::GetAddrInfo(
             lwipAddrinfo->ai_canonname,
             hints);
 
-        if (ai == NULL)
+        if (ai == nullptr)
         {
             // Out of memory
             lwip_freeaddrinfo(lwipAddrinfo);
@@ -834,7 +861,7 @@ void LWIP_SOCKETS_Driver::FreeAddrInfo(SOCK_addrinfo *ai)
 
     SOCK_addrinfo *next;
 
-    while (ai != NULL)
+    while (ai != nullptr)
     {
         next = ai->ai_next;
         mem_free(ai);
@@ -868,7 +895,7 @@ int LWIP_SOCKETS_Driver::GetSockLastError(SOCK_SOCKET socket)
 
 static int MARSHAL_SOCK_FDSET_TO_FDSET(SOCK_fd_set *sf, fd_set *f)
 {
-    if (f != NULL && sf != NULL)
+    if (f != nullptr && sf != nullptr)
     {
         FD_ZERO(f);
 
@@ -884,7 +911,7 @@ static int MARSHAL_SOCK_FDSET_TO_FDSET(SOCK_fd_set *sf, fd_set *f)
 
 static void MARSHAL_FDSET_TO_SOCK_FDSET(SOCK_fd_set *sf, fd_set *f)
 {
-    if (sf != NULL && f != NULL)
+    if (sf != nullptr && f != nullptr)
     {
         int cnt = sf->fd_count;
         sf->fd_count = 0;
@@ -915,12 +942,12 @@ int LWIP_SOCKETS_Driver::Select(
     fd_set write;
     fd_set excpt;
 
-    fd_set *pR = (readfds != NULL) ? &read : NULL;
-    fd_set *pW = (writefds != NULL) ? &write : NULL;
-    fd_set *pE = (exceptfds != NULL) ? &excpt : NULL;
+    fd_set *pR = (readfds != nullptr) ? &read : nullptr;
+    fd_set *pW = (writefds != nullptr) ? &write : nullptr;
+    fd_set *pE = (exceptfds != nullptr) ? &excpt : nullptr;
 
     // If network down then we should alert any pending socket actions
-    if (exceptfds != NULL && exceptfds->fd_count > 0)
+    if (exceptfds != nullptr && exceptfds->fd_count > 0)
     {
         bool networkInterfaceAvailable = false;
 
@@ -929,7 +956,7 @@ int LWIP_SOCKETS_Driver::Select(
         {
             struct netif *networkInterface =
                 netif_find_interface(g_LWIP_SOCKETS_Driver.m_interfaces[i].m_interfaceNumber);
-            if (networkInterface != NULL)
+            if (networkInterface != nullptr)
             {
                 if (netif_is_up(networkInterface))
                 {
@@ -941,9 +968,9 @@ int LWIP_SOCKETS_Driver::Select(
 
         if (!networkInterfaceAvailable)
         {
-            if (readfds != NULL)
+            if (readfds != nullptr)
                 readfds->fd_count = 0;
-            if (writefds != NULL)
+            if (writefds != nullptr)
                 writefds->fd_count = 0;
 
             errorCode = ENETDOWN;
@@ -1312,7 +1339,7 @@ HRESULT LWIP_SOCKETS_Driver::UpdateAdapterConfiguration(
 
     struct netif *networkInterface =
         netif_find_interface(g_LWIP_SOCKETS_Driver.m_interfaces[interfaceIndex].m_interfaceNumber);
-    if (NULL == networkInterface)
+    if (nullptr == networkInterface)
     {
         return CLR_E_FAIL;
     }
@@ -1888,7 +1915,7 @@ struct netif *netif_find_interface(int num)
 
     struct netif *networkInterface;
 
-    for (networkInterface = netif_list; networkInterface != NULL; networkInterface = networkInterface->next)
+    for (networkInterface = netif_list; networkInterface != nullptr; networkInterface = networkInterface->next)
     {
         if (num == networkInterface->num)
         {
@@ -1897,5 +1924,5 @@ struct netif *netif_find_interface(int num)
     }
 #endif
 
-    return NULL;
+    return nullptr;
 }

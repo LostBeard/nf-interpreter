@@ -92,7 +92,7 @@ if(RTOS_VERSION_EMPTY)
     # no ChibiOS version actualy specified, must be empty which is fine, we'll default to a known good version
     # WHEN CHANGING THIS MAKE SURE TO UPDATE THE DEV CONTAINERS
     # WHEN CHANGING THIS MAKE SURE TO UPDATE ThreadX\ST\CMakeLists.txt
-    set(RTOS_VERSION "stable_21.11.x")
+    set(RTOS_VERSION "stable-21.11.x")
 endif()
 
 if(NOT NO_CHIBIOS_SOURCE_FOLDER)
@@ -104,31 +104,35 @@ if(NOT NO_CHIBIOS_SOURCE_FOLDER)
         SOURCE_DIR ${CHIBIOS_SOURCE_FOLDER}
     )
 
-elseif(CHIBIOS_GIT_REPOSITORY)
-    # ChibiOS from Git repository (used for RP targets that need master branch)
-
-    if(NOT CHIBIOS_GIT_TAG)
-        set(CHIBIOS_GIT_TAG "master")
-    endif()
-
-    message(STATUS "RTOS is: ChibiOS ${CHIBIOS_GIT_TAG} from GitHub (${CHIBIOS_GIT_REPOSITORY})")
-
-    FetchContent_Declare(
-        chibios
-        GIT_REPOSITORY ${CHIBIOS_GIT_REPOSITORY}
-        GIT_TAG ${CHIBIOS_GIT_TAG}
-        GIT_SHALLOW ON
-    )
-
 else()
     # no CHIBIOS source specified, download it from it's repo
-    message(STATUS "RTOS is: ChibiOS ${RTOS_VERSION} from SVN official repo")
 
-    FetchContent_Declare(
-        chibios
-        SVN_REPOSITORY http://svn.code.sf.net/p/chibios/code/branches/${RTOS_VERSION}
-        SVN_REVISION -rHEAD
-    )
+    # temporary workaround to fetch from master branch for RPI Pico targets
+    if("${_TARGET_SERIES_PREFIX}" STREQUAL "RP2")
+
+        message(STATUS "RTOS is: ChibiOS from GitHub repo (master branch)")
+
+        FetchContent_Declare(
+            chibios
+            GIT_REPOSITORY "https://github.com/chibios-upstream/chibios.git"
+            GIT_TAG "master"
+            GIT_SHALLOW ON
+            UPDATE_DISCONNECTED ON
+        )
+
+    else()
+
+        message(STATUS "RTOS is: ChibiOS ${RTOS_VERSION} from GitHub repo")
+
+        FetchContent_Declare(
+            chibios
+            GIT_REPOSITORY "https://github.com/chibios-upstream/chibios.git"
+            GIT_TAG ${RTOS_VERSION}
+            GIT_SHALLOW ON
+            UPDATE_DISCONNECTED ON
+        )
+
+    endif()
 
 endif()
 
@@ -147,6 +151,10 @@ if(CHIBIOS_CONTRIB_REQUIRED)
             chibios-contrib
             GIT_REPOSITORY https://github.com/ChibiOS/ChibiOS-Contrib.git
             GIT_TAG chibios-21.11.x
+            # ext/mcux-sdk (NXP MCUXpresso SDK, ~400MB) is only needed by NXP boards;
+            # none of the ChibiOS-Contrib consumers here target NXP parts, so skip it.
+            GIT_SUBMODULES ""
+            UPDATE_DISCONNECTED ON
         )
 
         message(STATUS "ChibiOS-Contrib from GitHub repo")
@@ -211,6 +219,7 @@ if(NF_FEATURE_HAS_SDCARD OR NF_FEATURE_HAS_USB_MSD)
             fatfs
             GIT_REPOSITORY https://github.com/abbrev/fatfs.git
             GIT_TAG ${FATFS_VERSION_TAG}
+            UPDATE_DISCONNECTED ON
         )
 
     else()
@@ -393,7 +402,7 @@ if(NF_FEATURE_USE_LITTLEFS_OPTION)
     if(LITTLEFS_VERSION_EMPTY)
         # no littlefs version actualy specified, must be empty which is fine, we'll default to a known good version
         # WHEN CHANGING THIS MAKE SURE TO UPDATE THE DEV CONTAINERS AND PIPELINE YAML
-        set(LITTLEFS_VERSION_TAG "v2.11.2")
+        set(LITTLEFS_VERSION_TAG "v2.11.3")
     else()
         # set version 
         set(LITTLEFS_VERSION_TAG ${LITTLEFS_VERSION})
@@ -406,6 +415,7 @@ if(NF_FEATURE_USE_LITTLEFS_OPTION)
             littlefs
             GIT_REPOSITORY https://github.com/littlefs-project/littlefs.git
             GIT_TAG ${LITTLEFS_VERSION_TAG}
+            UPDATE_DISCONNECTED ON
         )
 
     else()

@@ -39,13 +39,13 @@ cd /sources/ThreadX || exit 1
 git pull
 cd /
 rm -rf /sources/ChibiOs
-git svn clone http://svn.code.sf.net/p/chibios/code/branches/stable_21.11.x -rHEAD /sources/ChibiOs
+git clone --branch stable-21.11.x https://github.com/chibios-upstream/chibios.git --depth 1 /sources/ChibiOs
 cd /sources/ChibiOs-Contrib || exit 1
 git pull origin chibios-21.11.x
 cd /sources/mbedtls || exit 1
-git fetch --depth=1 origin tag mbedtls-3.6.5
-git checkout tags/mbedtls-3.6.5
-git submodule update --init
+git fetch --depth=1 origin tag mbedtls-3.6.7
+git checkout tags/mbedtls-3.6.7
+git submodule update --init --recursive
 cd /sources/fatfs || exit 1
 git fetch --depth=1 origin tag R0.16
 git checkout tags/R0.16
@@ -56,7 +56,7 @@ git pull origin 5.5.1
 cd /sources/lwip || exit 1
 git pull origin STABLE-2_1_3_RELEASE
 cd /sources/littlefs || exit 1
-git pull origin v2.11.2
+git pull origin v2.11.3
 cd /sources/SimpleLinkCC32 || exit 1
 git pull origin 4.10.00.07
 cd /sources/SimpleLinkCC13 || exit 1

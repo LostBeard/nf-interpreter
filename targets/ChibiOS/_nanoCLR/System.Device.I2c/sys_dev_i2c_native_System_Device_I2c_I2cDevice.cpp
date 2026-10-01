@@ -7,12 +7,19 @@
 
 typedef Library_sys_dev_i2c_native_System_Device_I2c_I2cConnectionSettings I2cConnectionSettings;
 typedef Library_sys_dev_i2c_native_System_Device_I2c_I2cTransferResult I2cTransferResult;
-typedef Library_corlib_native_System_SpanByte SpanByte;
+typedef Library_corlib_native_System_Span_1 Span;
+typedef Library_corlib_native_System_ReadOnlySpan_1 ReadOnlySpan;
 
 ////////////////////////////////////////////
 // declaration of the the I2C PAL structs //
 ////////////////////////////////////////////
-#if (STM32_I2C_USE_I2C1 == TRUE)
+#if defined(RP_I2C_USE_I2C0)
+NF_PAL_I2C I2C0_PAL;
+#endif
+#if defined(RP_I2C_USE_I2C1)
+NF_PAL_I2C I2C1_PAL;
+#endif
+#if defined(STM32_I2C_USE_I2C1) && (STM32_I2C_USE_I2C1 == TRUE)
 NF_PAL_I2C I2C1_PAL;
 #endif
 #if defined(STM32_I2C_USE_I2C2) && (STM32_I2C_USE_I2C2 == TRUE)
@@ -25,7 +32,13 @@ NF_PAL_I2C I2C3_PAL;
 NF_PAL_I2C I2C4_PAL;
 #endif
 
-#if (STM32_I2C_USE_I2C1 == TRUE)
+#if defined(RP_I2C_USE_I2C0)
+uint8_t I2C0_DeviceCounter;
+#endif
+#if defined(RP_I2C_USE_I2C1)
+uint8_t I2C1_DeviceCounter;
+#endif
+#if defined(STM32_I2C_USE_I2C1) && (STM32_I2C_USE_I2C1 == TRUE)
 uint8_t I2C1_DeviceCounter;
 #endif
 #if defined(STM32_I2C_USE_I2C2) && (STM32_I2C_USE_I2C2 == TRUE)
@@ -43,7 +56,11 @@ void GetI2cConfig(CLR_RT_HeapBlock *managedConfig, I2CConfig *llConfig)
     I2cBusSpeed busSpeed = (I2cBusSpeed)managedConfig[I2cConnectionSettings::FIELD___busSpeed].NumericByRef().s4;
 
 // set the LL I2C configuration (according to I2C driver version)
-#if defined(STM32F1XX) || defined(STM32F4XX) || defined(STM32L1XX)
+#if defined(RP_I2C_USE_I2C0) || defined(RP_I2C_USE_I2C1)
+
+    llConfig->baudrate = busSpeed == I2cBusSpeed_StandardMode ? 100000U : 400000U;
+
+#elif defined(STM32F1XX) || defined(STM32F4XX) || defined(STM32L1XX)
 
     llConfig->op_mode = OPMODE_I2C;
     llConfig->clock_speed = busSpeed == I2cBusSpeed_StandardMode ? 100000U : 400000U;
@@ -117,7 +134,7 @@ static THD_FUNCTION(I2CWorkingThread, arg)
                 palI2c->Address,
                 palI2c->WriteBuffer,
                 palI2c->WriteSize,
-                NULL,
+                nullptr,
                 0,
                 TIME_MS2I(estimatedDurationMiliseconds));
         }
@@ -146,11 +163,11 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeInit___VOI
 {
     NANOCLR_HEADER();
 
-    NF_PAL_I2C *palI2c = NULL;
+    NF_PAL_I2C *palI2c = nullptr;
     CLR_RT_HeapBlock *connectionSettings;
     uint8_t busIndex;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -167,9 +184,35 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeInit___VOI
     // the same bus just using different addresses
     switch (busIndex)
     {
-#if (STM32_I2C_USE_I2C1 == TRUE)
+#if defined(RP_I2C_USE_I2C0)
+        case 0:
+            if (I2C0_PAL.Driver == NULL)
+            {
+                ConfigPins_I2C0();
+
+                I2C0_PAL.Driver = &I2CD0;
+                palI2c = &I2C0_PAL;
+
+                I2C0_DeviceCounter++;
+            }
+            break;
+#endif
+#if defined(RP_I2C_USE_I2C1)
         case 1:
             if (I2C1_PAL.Driver == NULL)
+            {
+                ConfigPins_I2C1();
+
+                I2C1_PAL.Driver = &I2CD1;
+                palI2c = &I2C1_PAL;
+
+                I2C1_DeviceCounter++;
+            }
+            break;
+#endif
+#if defined(STM32_I2C_USE_I2C1) && (STM32_I2C_USE_I2C1 == TRUE)
+        case 1:
+            if (I2C1_PAL.Driver == nullptr)
             {
                 ConfigPins_I2C1();
 
@@ -183,7 +226,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeInit___VOI
 #endif
 #if defined(STM32_I2C_USE_I2C2) && (STM32_I2C_USE_I2C2 == TRUE)
         case 2:
-            if (I2C2_PAL.Driver == NULL)
+            if (I2C2_PAL.Driver == nullptr)
             {
                 ConfigPins_I2C2();
 
@@ -197,7 +240,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeInit___VOI
 #endif
 #if defined(STM32_I2C_USE_I2C3) && (STM32_I2C_USE_I2C3 == TRUE)
         case 3:
-            if (I2C3_PAL.Driver == NULL)
+            if (I2C3_PAL.Driver == nullptr)
             {
                 ConfigPins_I2C3();
 
@@ -211,7 +254,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeInit___VOI
 #endif
 #if defined(STM32_I2C_USE_I2C4) && (STM32_I2C_USE_I2C4 == TRUE)
         case 4:
-            if (I2C4_PAL.Driver == NULL)
+            if (I2C4_PAL.Driver == nullptr)
             {
                 ConfigPins_I2C4();
 
@@ -257,7 +300,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
 
     CLR_RT_HeapBlock *connectionSettings;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -270,7 +313,29 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
     // get the driver for the I2C bus
     switch (busIndex)
     {
-#if (STM32_I2C_USE_I2C1 == TRUE)
+#if defined(RP_I2C_USE_I2C0)
+        case 0:
+            I2C0_DeviceCounter--;
+
+            if (I2C0_DeviceCounter == 0)
+            {
+                i2cStop(&I2CD0);
+                I2C0_PAL.Driver = NULL;
+            }
+            break;
+#endif
+#if defined(RP_I2C_USE_I2C1)
+        case 1:
+            I2C1_DeviceCounter--;
+
+            if (I2C1_DeviceCounter == 0)
+            {
+                i2cStop(&I2CD1);
+                I2C1_PAL.Driver = NULL;
+            }
+            break;
+#endif
+#if defined(STM32_I2C_USE_I2C1) && (STM32_I2C_USE_I2C1 == TRUE)
         case 1:
             // remove device
             I2C1_DeviceCounter--;
@@ -281,7 +346,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
                 // deactivates the I2C peripheral
                 i2cStop(&I2CD1);
                 // nulls driver
-                I2C1_PAL.Driver = NULL;
+                I2C1_PAL.Driver = nullptr;
             }
             break;
 #endif
@@ -297,7 +362,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
                 // deactivates the I2C peripheral
                 i2cStop(&I2CD2);
                 // nulls driver
-                I2C2_PAL.Driver = NULL;
+                I2C2_PAL.Driver = nullptr;
             }
 
             break;
@@ -314,7 +379,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
                 // deactivates the I2C peripheral
                 i2cStop(&I2CD3);
                 // nulls driver
-                I2C3_PAL.Driver = NULL;
+                I2C3_PAL.Driver = nullptr;
             }
             break;
 #endif
@@ -330,7 +395,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
                 // deactivates the I2C peripheral
                 i2cStop(&I2CD4);
                 // nulls driver
-                I2C4_PAL.Driver = NULL;
+                I2C4_PAL.Driver = nullptr;
             }
             break;
 #endif
@@ -345,12 +410,12 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
 }
 
 HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
-    NativeTransmit___SystemDeviceI2cI2cTransferResult__SystemSpanByte__SystemSpanByte(CLR_RT_StackFrame &stack)
+    NativeTransmit___SystemDeviceI2cI2cTransferResult__SystemReadOnlySpan_1__SystemSpan_1(CLR_RT_StackFrame &stack)
 {
     NANOCLR_HEADER();
 
     uint8_t busIndex;
-    NF_PAL_I2C *palI2c = NULL;
+    NF_PAL_I2C *palI2c = nullptr;
     bool isLongRunningOperation = false;
     msg_t transactionResult = MSG_OK;
 
@@ -360,15 +425,13 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
     uint32_t estimatedDurationMiliseconds;
 
     CLR_RT_HeapBlock *result;
-    CLR_RT_HeapBlock *writeSpanByte;
+    CLR_RT_HeapBlock *writeReadOnlySpanByte;
     CLR_RT_HeapBlock *readSpanByte;
     CLR_RT_HeapBlock *connectionSettings;
-    CLR_RT_HeapBlock_Array *writeBuffer = NULL;
-    CLR_RT_HeapBlock_Array *readBuffer = NULL;
-    int readOffset = 0;
-    int writeOffset = 0;
+    CLR_RT_HeapBlock_Array *writeBuffer = nullptr;
+    CLR_RT_HeapBlock_Array *readBuffer = nullptr;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -381,7 +444,17 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
     // get the driver for the I2C bus
     switch (busIndex)
     {
-#if (STM32_I2C_USE_I2C1 == TRUE)
+#if defined(RP_I2C_USE_I2C0)
+        case 0:
+            palI2c = &I2C0_PAL;
+            break;
+#endif
+#if defined(RP_I2C_USE_I2C1)
+        case 1:
+            palI2c = &I2C1_PAL;
+            break;
+#endif
+#if defined(STM32_I2C_USE_I2C1) && (STM32_I2C_USE_I2C1 == TRUE)
         case 1:
             palI2c = &I2C1_PAL;
             break;
@@ -407,50 +480,43 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
             break;
     }
 
-    // dereference the write and read SpanByte from the arguments
-    writeSpanByte = stack.Arg1().Dereference();
-    if (writeSpanByte != NULL)
+    // dereference the write ReadOnlySpan and read Span from the arguments
+    writeReadOnlySpanByte = stack.Arg1().Dereference();
+    if (writeReadOnlySpanByte != nullptr)
     {
         // get buffer
-        writeBuffer = writeSpanByte[SpanByte::FIELD___array].DereferenceArray();
-        if (writeBuffer != NULL)
+        writeBuffer = writeReadOnlySpanByte[ReadOnlySpan::FIELD___array].DereferenceArray();
+        if (writeBuffer != nullptr)
         {
-            // Get the write offset, only the elements defined by the span must be written, not the whole array
-            writeOffset = writeSpanByte[SpanByte::FIELD___start].NumericByRef().s4;
-
             // use the span length as write size, only the elements defined by the span must be written
-            palI2c->WriteSize = writeSpanByte[SpanByte::FIELD___length].NumericByRef().s4;
-
+            palI2c->WriteSize = writeReadOnlySpanByte[ReadOnlySpan::FIELD___length].NumericByRef().s4;
             // pin the buffer so DMA can find it where its supposed to be
             writeBuffer->Pin();
         }
     }
 
-    if (writeBuffer == NULL)
+    if (writeBuffer == nullptr)
     {
         // nothing to write, have to zero this
         palI2c->WriteSize = 0;
     }
 
     readSpanByte = stack.Arg2().Dereference();
-    if (readSpanByte != NULL)
+    if (readSpanByte != nullptr)
     {
         // get buffer
-        readBuffer = readSpanByte[SpanByte::FIELD___array].DereferenceArray();
-        if (readBuffer != NULL)
+        readBuffer = readSpanByte[Span::FIELD___array].DereferenceArray();
+        if (readBuffer != nullptr)
         {
-            // Get the read offset, only the elements defined by the span must be read, not the whole array
-            readOffset = readSpanByte[SpanByte::FIELD___start].NumericByRef().s4;
-
             // use the span length as read size, only the elements defined by the span must be read
-            palI2c->ReadSize = readSpanByte[SpanByte::FIELD___length].NumericByRef().s4;
+            palI2c->ReadSize = readSpanByte[Span::FIELD___length].NumericByRef().s4;
 
             // pin the buffer so DMA can find it where its supposed to be
             readBuffer->Pin();
         }
     }
 
-    if (readBuffer == NULL)
+    if (readBuffer == nullptr)
     {
         // nothing to read, have to zero this
         palI2c->ReadSize = 0;
@@ -483,20 +549,20 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
         palI2c->Driver->addr = palI2c->Address;
 #endif
 
-        if (writeBuffer != NULL)
+        if (writeBuffer != nullptr)
         {
             // grab the pointer to the array by starting and the offset specified in the span
-            palI2c->WriteBuffer = (uint8_t *)writeBuffer->GetElement(writeOffset);
+            palI2c->WriteBuffer = (uint8_t *)writeBuffer->GetFirstElement();
 
             // flush DMA buffer to ensure cache coherency
             // (only required for Cortex-M7)
             cacheBufferFlush(palI2c->WriteBuffer, palI2c->WriteSize);
         }
 
-        if (readBuffer != NULL)
+        if (readBuffer != nullptr)
         {
             // grab the pointer to the array by starting and the offset specified in the span
-            palI2c->ReadBuffer = (uint8_t *)readBuffer->GetElement(readOffset);
+            palI2c->ReadBuffer = (uint8_t *)readBuffer->GetFirstElement();
         }
 
         // because the bus access is shared, acquire the appropriate bus
@@ -512,9 +578,9 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
         {
             // spawn working thread to perform the I2C transaction
             palI2c->WorkingThread =
-                chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(256), "I2CWT", NORMALPRIO, I2CWorkingThread, palI2c);
+                chThdCreateFromHeap(nullptr, THD_WORKING_AREA_SIZE(256), "I2CWT", NORMALPRIO, I2CWorkingThread, palI2c);
 
-            if (palI2c->WorkingThread == NULL)
+            if (palI2c->WorkingThread == nullptr)
             {
                 NANOCLR_SET_AND_LEAVE(CLR_E_PROCESS_EXCEPTION);
             }
@@ -550,7 +616,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
                     palI2c->Address,
                     palI2c->WriteBuffer,
                     palI2c->WriteSize,
-                    NULL,
+                    nullptr,
                     0,
                     TIME_MS2I(20));
             }
@@ -604,7 +670,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
         // managed stack
         CLR_RT_HeapBlock &top = stack.PushValueAndClear();
         NANOCLR_CHECK_HRESULT(
-            g_CLR_RT_ExecutionEngine.NewObjectFromIndex(top, g_CLR_RT_WellKnownTypes.m_I2cTransferResult));
+            g_CLR_RT_ExecutionEngine.NewObjectFromIndex(top, g_CLR_RT_WellKnownTypes.I2cTransferResult));
         result = top.Dereference();
         FAULT_ON_NULL(result);
 
@@ -666,12 +732,12 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
     if (hr != CLR_E_THREAD_WAITING)
     {
         // un-pin the buffers
-        if (writeBuffer != NULL && writeBuffer->IsPinned())
+        if (writeBuffer != nullptr && writeBuffer->IsPinned())
         {
             writeBuffer->Unpin();
         }
 
-        if (readBuffer != NULL && readBuffer->IsPinned())
+        if (readBuffer != nullptr && readBuffer->IsPinned())
         {
             readBuffer->Unpin();
         }

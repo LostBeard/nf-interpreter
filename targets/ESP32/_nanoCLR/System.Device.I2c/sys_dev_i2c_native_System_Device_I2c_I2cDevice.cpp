@@ -13,14 +13,21 @@
 
 typedef Library_sys_dev_i2c_native_System_Device_I2c_I2cConnectionSettings I2cConnectionSettings;
 typedef Library_sys_dev_i2c_native_System_Device_I2c_I2cTransferResult I2cTransferResult;
-typedef Library_corlib_native_System_SpanByte SpanByte;
+typedef Library_corlib_native_System_Span_1 Span;
+typedef Library_corlib_native_System_ReadOnlySpan_1 ReadOnlySpan;
 
 bool SetConfig(i2c_port_t bus, CLR_RT_HeapBlock *config)
 {
     int busSpeed = config[I2cConnectionSettings::FIELD___busSpeed].NumericByRef().s4;
 
+    // Get and validate the GPIO pins for this bus from the device map
     gpio_num_t DataPin = (gpio_num_t)Esp32_GetMappedDevicePins(DEV_TYPE_I2C, bus, 0);
     gpio_num_t ClockPin = (gpio_num_t)Esp32_GetMappedDevicePins(DEV_TYPE_I2C, bus, 1);
+
+    if (CPU_GPIO_PinIsBusy((GPIO_PIN)DataPin) || CPU_GPIO_PinIsBusy((GPIO_PIN)ClockPin))
+    {
+        return false;
+    }
 
     i2c_config_t conf;
     conf.mode = I2C_MODE_MASTER;
@@ -57,7 +64,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeInit___VOI
     {
         CLR_RT_HeapBlock *pConfig;
 
-        // get a pointer to the managed object instance and check that it's not NULL
+        // get a pointer to the managed object instance and check that it's not nullptr
         CLR_RT_HeapBlock *pThis = stack.This();
         FAULT_ON_NULL(pThis);
 
@@ -106,7 +113,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
     CLR_RT_HeapBlock *pConfig;
     i2c_port_t bus;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -130,15 +137,13 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::NativeDispose___
 }
 
 HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
-    NativeTransmit___SystemDeviceI2cI2cTransferResult__SystemSpanByte__SystemSpanByte(CLR_RT_StackFrame &stack)
+    NativeTransmit___SystemDeviceI2cI2cTransferResult__SystemReadOnlySpan_1__SystemSpan_1(CLR_RT_StackFrame &stack)
 {
     NANOCLR_HEADER();
 
-    uint8_t *writeBuffer = NULL;
-    uint8_t *readBuffer = NULL;
-    int writeOffset = 0;
+    uint8_t *writeBuffer = nullptr;
+    uint8_t *readBuffer = nullptr;
     int writeSize = 0;
-    int readOffset = 0;
     int readSize = 0;
     esp_err_t opResult;
     uint32_t transferResult;
@@ -147,16 +152,16 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
     i2c_cmd_handle_t cmd;
 
     CLR_RT_HeapBlock *result;
-    CLR_RT_HeapBlock *writeSpanByte;
+    CLR_RT_HeapBlock *writeReadOnlySpanByte;
     CLR_RT_HeapBlock *readSpanByte;
-    CLR_RT_HeapBlock_Array *writeData = NULL;
-    CLR_RT_HeapBlock_Array *readData = NULL;
-    CLR_RT_HeapBlock *pConfig = NULL;
+    CLR_RT_HeapBlock_Array *writeData = nullptr;
+    CLR_RT_HeapBlock_Array *readData = nullptr;
+    CLR_RT_HeapBlock *pConfig = nullptr;
 
     // create the return object (I2cTransferResult)
     CLR_RT_HeapBlock &top = stack.PushValueAndClear();
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -171,32 +176,30 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
 
     cmd = i2c_cmd_link_create();
 
-    // dereference the write and read SpanByte from the arguments
-    writeSpanByte = stack.Arg1().Dereference();
-    if (writeSpanByte != NULL)
+    // dereference the write ReadOnlySpan and read Span from the arguments
+    writeReadOnlySpanByte = stack.Arg1().Dereference();
+
+    if (writeReadOnlySpanByte != nullptr)
     {
-        writeData = writeSpanByte[SpanByte::FIELD___array].DereferenceArray();
+        writeData = writeReadOnlySpanByte[ReadOnlySpan::FIELD___array].DereferenceArray();
 
-        if (writeData != NULL)
+        if (writeData != nullptr)
         {
-            // Get the write offset, only the elements defined by the span must be written, not the whole array
-            writeOffset = writeSpanByte[SpanByte::FIELD___start].NumericByRef().s4;
-
             // use the span length as write size, only the elements defined by the span must be written
-            writeSize = writeSpanByte[SpanByte::FIELD___length].NumericByRef().s4;
+            writeSize = writeReadOnlySpanByte[ReadOnlySpan::FIELD___length].NumericByRef().s4;
 
             if (writeSize > 0)
             {
                 // need to allocate buffer from internal memory
                 writeBuffer = (uint8_t *)heap_caps_malloc(writeSize, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
 
-                if (writeBuffer == NULL)
+                if (writeBuffer == nullptr)
                 {
                     NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
                 }
 
                 // copy buffer content
-                memcpy(writeBuffer, (uint8_t *)writeData->GetElement(writeOffset), writeSize);
+                memcpy(writeBuffer, (uint8_t *)writeData->GetFirstElement(), writeSize);
 
                 // setup write transaction
                 i2c_master_start(cmd);
@@ -214,22 +217,19 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
     readSpanByte = stack.Arg2().Dereference();
     if (readSpanByte != 0)
     {
-        readData = readSpanByte[SpanByte::FIELD___array].DereferenceArray();
+        readData = readSpanByte[Span::FIELD___array].DereferenceArray();
 
-        if (readData != NULL)
+        if (readData != nullptr)
         {
-            // Get the read offset, only the elements defined by the span must be read, not the whole array
-            readOffset = readSpanByte[SpanByte::FIELD___start].NumericByRef().s4;
-
             // use the span length as read size, only the elements defined by the span must be read
-            readSize = readSpanByte[SpanByte::FIELD___length].NumericByRef().s4;
+            readSize = readSpanByte[Span::FIELD___length].NumericByRef().s4;
 
             if (readSize > 0)
             {
                 // need to allocate buffer from internal memory
                 readBuffer = (uint8_t *)heap_caps_malloc(readSize, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
 
-                if (readBuffer == NULL)
+                if (readBuffer == nullptr)
                 {
                     NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
                 }
@@ -263,8 +263,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
     i2c_cmd_link_delete(cmd);
 
     // create return object
-    NANOCLR_CHECK_HRESULT(
-        g_CLR_RT_ExecutionEngine.NewObjectFromIndex(top, g_CLR_RT_WellKnownTypes.m_I2cTransferResult));
+    NANOCLR_CHECK_HRESULT(g_CLR_RT_ExecutionEngine.NewObjectFromIndex(top, g_CLR_RT_WellKnownTypes.I2cTransferResult));
 
     result = top.Dereference();
     FAULT_ON_NULL(result);
@@ -296,7 +295,7 @@ HRESULT Library_sys_dev_i2c_native_System_Device_I2c_I2cDevice::
         if (readSize > 0)
         {
             // grab the pointer to the array by starting and the offset specified in the span
-            memcpy(readData->GetElement(readOffset), readBuffer, readSize);
+            memcpy(readData->GetFirstElement(), readBuffer, readSize);
         }
 
         result[I2cTransferResult::FIELD___status].SetInteger((CLR_UINT32)I2cTransferStatus_FullTransfer);

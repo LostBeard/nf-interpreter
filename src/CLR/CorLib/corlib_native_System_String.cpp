@@ -10,6 +10,9 @@ static const CLR_UINT16 c_WhiteSpaces[] = {
     0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A, 0x200B, 0x3000, 0xFEFF,
 };
 
+// matching declaration in Library_corlib_native_System_Number.cpp
+#define FORMAT_RESULT_BUFFER_SIZE 128
+
 //--//
 
 HRESULT Library_corlib_native_System_String::CompareTo___I4__OBJECT(CLR_RT_StackFrame &stack)
@@ -140,6 +143,15 @@ HRESULT Library_corlib_native_System_String::Substring___STRING__I4__I4(CLR_RT_S
     NANOCLR_NOCLEANUP();
 }
 
+HRESULT Library_corlib_native_System_String::Trim___STRING(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+
+    NANOCLR_SET_AND_LEAVE(Trim(stack, nullptr, true, true));
+
+    NANOCLR_NOCLEANUP();
+}
+
 HRESULT Library_corlib_native_System_String::Trim___STRING__SZARRAY_CHAR(CLR_RT_StackFrame &stack)
 {
     NATIVE_PROFILE_CLR_CORE();
@@ -150,6 +162,19 @@ HRESULT Library_corlib_native_System_String::Trim___STRING__SZARRAY_CHAR(CLR_RT_
     NANOCLR_NOCLEANUP();
 }
 
+#if (CONFIG_NF_FEATURE_SUPPORT_REFLECTION == TRUE)
+
+HRESULT Library_corlib_native_System_String::TrimStart___STRING(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+
+    NANOCLR_SET_AND_LEAVE(Trim(stack, nullptr, true, false));
+
+    NANOCLR_NOCLEANUP();
+}
+
+#endif
+
 HRESULT Library_corlib_native_System_String::TrimStart___STRING__SZARRAY_CHAR(CLR_RT_StackFrame &stack)
 {
     NATIVE_PROFILE_CLR_CORE();
@@ -159,6 +184,19 @@ HRESULT Library_corlib_native_System_String::TrimStart___STRING__SZARRAY_CHAR(CL
 
     NANOCLR_NOCLEANUP();
 }
+
+#if (CONFIG_NF_FEATURE_SUPPORT_REFLECTION == TRUE)
+
+HRESULT Library_corlib_native_System_String::TrimEnd___STRING(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+
+    NANOCLR_SET_AND_LEAVE(Trim(stack, nullptr, false, true));
+
+    NANOCLR_NOCLEANUP();
+}
+
+#endif
 
 HRESULT Library_corlib_native_System_String::TrimEnd___STRING__SZARRAY_CHAR(CLR_RT_StackFrame &stack)
 {
@@ -206,10 +244,10 @@ HRESULT Library_corlib_native_System_String::_ctor___VOID__CHAR__I4(CLR_RT_Stack
     {
         CLR_RT_HeapBlock tmp;
 
-        tmp.SetObjectReference(NULL);
+        tmp.SetObjectReference(nullptr);
         CLR_RT_ProtectFromGC gc(tmp);
 
-        NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_Array::CreateInstance(tmp, len, g_CLR_RT_WellKnownTypes.m_Char));
+        NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_Array::CreateInstance(tmp, len, g_CLR_RT_WellKnownTypes.Char));
 
         {
             CLR_RT_HeapBlock_Array *tmpArray = tmp.DereferenceArray();
@@ -233,8 +271,10 @@ HRESULT Library_corlib_native_System_String::CompareTo___I4__STRING(CLR_RT_Stack
     NATIVE_PROFILE_CLR_CORE();
     NANOCLR_HEADER();
 
-    CLR_RT_HeapBlock &pThis = stack.Arg0(); // String references are special, they don't point to an object, they are
-                                            // the object. So use stack.Arg0() instead of stack.This()
+    // String references are special, they don't point to an object, they are
+    // the object. So use stack.Arg0() instead of stack.This()
+    CLR_RT_HeapBlock &pThis = stack.Arg0();
+
     CLR_RT_HeapBlock &pArg = stack.Arg1();
 
     stack.SetResult_I4(CLR_RT_HeapBlock::Compare_Unsigned_Values(pThis, pArg));
@@ -445,16 +485,6 @@ HRESULT Library_corlib_native_System_String::ToUpper___STRING(CLR_RT_StackFrame 
     NANOCLR_NOCLEANUP();
 }
 
-HRESULT Library_corlib_native_System_String::Trim___STRING(CLR_RT_StackFrame &stack)
-{
-    NATIVE_PROFILE_CLR_CORE();
-    NANOCLR_HEADER();
-
-    NANOCLR_SET_AND_LEAVE(Trim(stack, NULL, true, true));
-
-    NANOCLR_NOCLEANUP();
-}
-
 HRESULT Library_corlib_native_System_String::Equals___STATIC__BOOLEAN__STRING__STRING(CLR_RT_StackFrame &stack)
 {
     NATIVE_PROFILE_CLR_CORE();
@@ -590,7 +620,7 @@ bool MatchString(CLR_RT_UnicodeHelper &inputIter, const char *searchStr, int sea
 {
     // Create copies to preserve original iterator state
     CLR_RT_UnicodeHelper inputCopy = inputIter;
-    CLR_RT_UnicodeHelper searchIter;
+    CLR_RT_UnicodeHelper searchIter{};
     searchIter.SetInputUTF8(searchStr);
 
     for (int i = 0; i < searchCharLen; i++)
@@ -647,10 +677,10 @@ HRESULT Library_corlib_native_System_String::IndexOf(CLR_RT_StackFrame &stack, i
     int startIndex;
     int count;
     int pos;
-    const char *pString = NULL;
-    const CLR_UINT16 *pChars = NULL;
+    const char *pString = nullptr;
+    const CLR_UINT16 *pChars = nullptr;
     int iChars = 0;
-    CLR_RT_UnicodeHelper inputIterator;
+    CLR_RT_UnicodeHelper inputIterator{};
     int inputLen;
     int searchLen = 1;
 
@@ -869,7 +899,7 @@ HRESULT Library_corlib_native_System_String::ChangeCase(CLR_RT_StackFrame &stack
     CLR_RT_HeapBlock_Array *arrayTmp;
     CLR_RT_HeapBlock refTmp;
 
-    refTmp.SetObjectReference(NULL);
+    refTmp.SetObjectReference(nullptr);
     CLR_RT_ProtectFromGC gc(refTmp);
 
     NANOCLR_CHECK_HRESULT(ConvertToCharArray(stack, refTmp, arrayTmp, 0, -1));
@@ -894,11 +924,10 @@ HRESULT Library_corlib_native_System_String::ChangeCase(CLR_RT_StackFrame &stack
         *ptr++ = c;
     }
 
-    NANOCLR_CHECK_HRESULT(
-        CLR_RT_HeapBlock_String::CreateInstance(
-            stack.PushValue(),
-            (CLR_UINT16 *)arrayTmp->GetFirstElement(),
-            arrayTmp->m_numOfElements));
+    NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_String::CreateInstance(
+        stack.PushValue(),
+        (CLR_UINT16 *)arrayTmp->GetFirstElement(),
+        arrayTmp->m_numOfElements));
 
     NANOCLR_NOCLEANUP();
 }
@@ -911,7 +940,7 @@ HRESULT Library_corlib_native_System_String::Substring(CLR_RT_StackFrame &stack,
     CLR_RT_HeapBlock_Array *arrayTmp;
     CLR_RT_HeapBlock refTmp;
 
-    refTmp.SetObjectReference(NULL);
+    refTmp.SetObjectReference(nullptr);
     CLR_RT_ProtectFromGC gc(refTmp);
 
     NANOCLR_CHECK_HRESULT(ConvertToCharArray(stack, refTmp, arrayTmp, 0, -1));
@@ -929,11 +958,10 @@ HRESULT Library_corlib_native_System_String::Substring(CLR_RT_StackFrame &stack,
             NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_RANGE);
     }
 
-    NANOCLR_CHECK_HRESULT(
-        CLR_RT_HeapBlock_String::CreateInstance(
-            stack.PushValue(),
-            (CLR_UINT16 *)arrayTmp->GetElement(startIndex),
-            length));
+    NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_String::CreateInstance(
+        stack.PushValue(),
+        (CLR_UINT16 *)arrayTmp->GetElement(startIndex),
+        length));
 
     NANOCLR_NOCLEANUP();
 }
@@ -953,7 +981,7 @@ HRESULT Library_corlib_native_System_String::Trim(
     CLR_RT_HeapBlock refTmp;
     CLR_RT_HeapBlock_Array *arrayTmp;
 
-    refTmp.SetObjectReference(NULL);
+    refTmp.SetObjectReference(nullptr);
     CLR_RT_ProtectFromGC gc(refTmp);
 
     NANOCLR_CHECK_HRESULT(ConvertToCharArray(stack, refTmp, arrayTmp, 0, -1));
@@ -1042,7 +1070,7 @@ HRESULT Library_corlib_native_System_String::Split(CLR_RT_StackFrame &stack, CLR
     {
         CLR_RT_HeapBlock &refTarget = stack.PushValue();
 
-        NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_Array::CreateInstance(refTarget, 0, g_CLR_RT_WellKnownTypes.m_String));
+        NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_Array::CreateInstance(refTarget, 0, g_CLR_RT_WellKnownTypes.String));
 
         arrayDst = refTarget.DereferenceArray();
     }
@@ -1050,7 +1078,7 @@ HRESULT Library_corlib_native_System_String::Split(CLR_RT_StackFrame &stack, CLR
     {
         arrayChars = chars.DereferenceArray();
 
-        if (arrayChars != NULL && arrayChars->m_numOfElements > 0)
+        if (arrayChars != nullptr && arrayChars->m_numOfElements > 0)
         {
             pChars = (CLR_UINT16 *)arrayChars->GetFirstElement();
             cChars = arrayChars->m_numOfElements;
@@ -1061,12 +1089,12 @@ HRESULT Library_corlib_native_System_String::Split(CLR_RT_StackFrame &stack, CLR
             cChars = ARRAYSIZE(c_WhiteSpaces);
         }
 
-        arrayDst = NULL;
+        arrayDst = nullptr;
 
         {
             CLR_RT_HeapBlock refSrc;
 
-            refSrc.SetObjectReference(NULL);
+            refSrc.SetObjectReference(nullptr);
             CLR_RT_ProtectFromGC gc(refSrc);
 
             NANOCLR_CHECK_HRESULT(ConvertToCharArray(stack, refSrc, arraySrc, 0, -1));
@@ -1109,11 +1137,10 @@ HRESULT Library_corlib_native_System_String::Split(CLR_RT_StackFrame &stack, CLR
                         {
                             CLR_RT_HeapBlock *str = (CLR_RT_HeapBlock *)arrayDst->GetElement(count);
 
-                            NANOCLR_CHECK_HRESULT(
-                                CLR_RT_HeapBlock_String::CreateInstance(
-                                    *str,
-                                    pSrcStart,
-                                    (CLR_UINT32)(pSrc - pSrcStart)));
+                            NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_String::CreateInstance(
+                                *str,
+                                pSrcStart,
+                                (CLR_UINT32)(pSrc - pSrcStart)));
 
                             pSrcStart = pSrc + 1;
                         }
@@ -1128,7 +1155,7 @@ HRESULT Library_corlib_native_System_String::Split(CLR_RT_StackFrame &stack, CLR
                     CLR_RT_HeapBlock &refTarget = stack.PushValue();
 
                     NANOCLR_CHECK_HRESULT(
-                        CLR_RT_HeapBlock_Array::CreateInstance(refTarget, count, g_CLR_RT_WellKnownTypes.m_String));
+                        CLR_RT_HeapBlock_Array::CreateInstance(refTarget, count, g_CLR_RT_WellKnownTypes.String));
 
                     arrayDst = refTarget.DereferenceArray();
                 }
@@ -1148,7 +1175,7 @@ HRESULT Library_corlib_native_System_String::Concat(CLR_RT_StackFrame &stack, CL
 
     CLR_RT_HeapBlock *ptrSrc;
     const char *szTextSrc;
-    char *szTextDst = NULL;
+    char *szTextDst = nullptr;
     CLR_UINT32 totLen;
     CLR_UINT32 len;
 
@@ -1160,7 +1187,7 @@ HRESULT Library_corlib_native_System_String::Concat(CLR_RT_StackFrame &stack, CL
 
         for (int iStr = 0; iStr < num; iStr++)
         {
-            if (ptrSrc->Dereference() != NULL && ptrSrc->Dereference()->DataType() == DATATYPE_STRING)
+            if (ptrSrc->Dereference() != nullptr && ptrSrc->Dereference()->DataType() == DATATYPE_STRING)
             {
                 szTextSrc = ptrSrc->RecoverString();
 
@@ -1226,7 +1253,7 @@ HRESULT Library_corlib_native_System_String::ConvertToCharArray(
     if (CLR_RT_HeapBlock_Array::CheckRange(startIndex, length, totLength) == false)
         NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_RANGE);
 
-    NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_Array::CreateInstance(ref, length, g_CLR_RT_WellKnownTypes.m_Char));
+    NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_Array::CreateInstance(ref, length, g_CLR_RT_WellKnownTypes.Char));
 
     array = ref.DereferenceArray();
 
@@ -1251,4 +1278,531 @@ HRESULT Library_corlib_native_System_String::ConvertToCharArray(
 {
     NATIVE_PROFILE_CLR_CORE();
     return ConvertToCharArray(stack.Arg0().RecoverString(), ref, array, startIndex, length);
+}
+
+HRESULT Library_corlib_native_System_String::Format___STATIC__STRING__STRING__SZARRAY_OBJECT(CLR_RT_StackFrame &stack)
+{
+    NANOCLR_HEADER();
+
+    const char *format;
+    CLR_RT_HeapBlock_Array *args;
+    char *output = nullptr;
+    const char *p;
+    char negSign[] = "-";
+    char decSep[] = ".";
+
+    // Get format string
+    format = stack.Arg0().RecoverString();
+    FAULT_ON_NULL_ARG(format);
+
+    // Get arguments array
+    args = stack.Arg1().DereferenceArray();
+    FAULT_ON_NULL_ARG(args);
+
+    // loop twice: first to calculate length, second to format
+    for (int pass = 0; pass < 2; pass++)
+    {
+        int length = 0;
+        p = format;
+
+        while (*p)
+        {
+            if (*p == '{')
+            {
+                if (p[1] == '{')
+                {
+                    // Escaped brace
+                    if (pass == 1)
+                    {
+                        output[length] = '{';
+                    }
+
+                    length++;
+                    p += 2;
+
+                    continue;
+                }
+
+                // Parse placeholder
+                // Skip '{'
+                p++;
+
+                // Parse index
+                int index = 0;
+                bool hasIndex = false;
+                while (*p >= '0' && *p <= '9')
+                {
+                    index = index * 10 + (*p - '0');
+                    hasIndex = true;
+                    p++;
+                }
+
+                if (!hasIndex)
+                {
+                    NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
+                }
+
+                if (index < 0 || index >= (int)args->m_numOfElements)
+                {
+                    NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_RANGE);
+                }
+
+                // Parse optional alignment
+                int alignment = 0;
+                if (*p == ',')
+                {
+                    // Skip ','
+                    p++;
+                    bool negative = false;
+
+                    if (*p == '-')
+                    {
+                        negative = true;
+                        p++;
+                    }
+
+                    bool hasAlignmentDigits = false;
+                    while (*p >= '0' && *p <= '9')
+                    {
+                        alignment = alignment * 10 + (*p - '0');
+                        hasAlignmentDigits = true;
+                        p++;
+                    }
+
+                    if (!hasAlignmentDigits)
+                    {
+                        NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
+                    }
+
+                    if (negative)
+                    {
+                        alignment = -alignment;
+                    }
+                }
+
+                // Parse optional format specifier
+                char formatSpec[64] = {0};
+                if (*p == ':')
+                {
+                    // Skip ':'
+                    p++;
+                    int formatSpecLen = 0;
+
+                    while (*p && *p != '}' && formatSpecLen < 63)
+                    {
+                        formatSpec[formatSpecLen++] = *p++;
+                    }
+
+                    formatSpec[formatSpecLen] = '\0';
+
+                    if (formatSpecLen == 0)
+                    {
+                        NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
+                    }
+                }
+
+                if (*p != '}')
+                {
+                    NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
+                }
+
+                // Skip '}'
+                p++;
+
+                // Get and process the argument
+                CLR_RT_HeapBlock *arg = (CLR_RT_HeapBlock *)args->GetElement(index);
+                CLR_RT_HeapBlock *deref = arg->Dereference();
+
+                if (deref == nullptr)
+                {
+                    // this is a NULL object, get the argument itself
+                    deref = arg;
+                }
+
+                NanoCLRDataType dt = deref->DataType();
+
+                if (pass == 0)
+                {
+                    // Pass 0: Calculate length
+                    int argLength = 0;
+
+                    if (dt == DATATYPE_STRING)
+                    {
+                        const char *str = deref->StringText();
+                        argLength = str ? (int)hal_strlen_s(str) : 0;
+                    }
+                    else if (dt == DATATYPE_VALUETYPE)
+                    {
+                        deref = arg->FixBoxingReference();
+                        dt = deref->DataType();
+
+                        if (dt == DATATYPE_BOOLEAN)
+                        {
+                            // "False" is 5 chars
+                            argLength = 5;
+                        }
+                        else if (dt == DATATYPE_CHAR)
+                        {
+                            // single char, up to 4 bytes in UTF-8
+                            argLength = 4;
+                        }
+                        else if (dt >= DATATYPE_I1 && dt <= DATATYPE_R8)
+                        {
+                            // Conservative estimate
+                            argLength = FORMAT_RESULT_BUFFER_SIZE / 2;
+                        }
+                    }
+                    else if (dt == DATATYPE_BOOLEAN)
+                    {
+                        argLength = 5;
+                    }
+                    else if (dt == DATATYPE_CHAR)
+                    {
+                        argLength = 4;
+                    }
+                    else if (dt >= DATATYPE_I1 && dt <= DATATYPE_R8)
+                    {
+                        argLength = 64;
+                    }
+                    else
+                    {
+                        // non-primitive object: conservative estimate for type name
+                        argLength = 256;
+                    }
+
+                    // Account for alignment
+                    int absAlignment = (alignment < 0) ? -alignment : alignment;
+                    if (absAlignment > argLength)
+                    {
+                        argLength = absAlignment;
+                    }
+
+                    length += argLength;
+                }
+                else
+                {
+                    // Pass 1: Format the argument
+                    char argBuffer[FORMAT_RESULT_BUFFER_SIZE] = {0};
+                    const char *argStr = nullptr;
+
+                    if (dt == DATATYPE_STRING)
+                    {
+                        argStr = deref->StringText();
+                        if (!argStr)
+                        {
+                            argStr = "";
+                        }
+                    }
+                    else if (dt == DATATYPE_VALUETYPE)
+                    {
+                        deref = arg->FixBoxingReference();
+                        dt = deref->DataType();
+                    }
+
+                    // after unboxing VALUETYPE, or for direct primitive types, dispatch by data type
+                    if (argStr == nullptr)
+                    {
+                        if (dt == DATATYPE_BOOLEAN)
+                        {
+                            argStr = deref->NumericByRef().u1 ? "True" : "False";
+                        }
+                        else if (dt == DATATYPE_CHAR)
+                        {
+                            CLR_UINT16 ch = deref->NumericByRef().u2;
+                            CLR_RT_UnicodeHelper uh{};
+                            uh.m_outputUTF8 = (CLR_UINT8 *)argBuffer;
+                            uh.m_outputUTF8_size = FORMAT_RESULT_BUFFER_SIZE - 1;
+                            uh.m_inputUTF16 = &ch;
+                            uh.ConvertToUTF8(1, false);
+                            int chLen = (int)((CLR_UINT8 *)uh.m_outputUTF8 - (CLR_UINT8 *)argBuffer);
+                            argBuffer[chLen] = '\0';
+                            argStr = argBuffer;
+                        }
+                        else if (dt >= DATATYPE_I1 && dt <= DATATYPE_R8)
+                        {
+                            bool isInteger = (dt >= DATATYPE_I1 && dt <= DATATYPE_U8);
+                            int len = -1;
+
+                            if (formatSpec[0] != '\0')
+                            {
+                                char fmtChar;
+                                int precision;
+
+                                if (Library_corlib_native_System_Number::GetFormatSpec(
+                                        formatSpec,
+                                        isInteger,
+                                        &fmtChar,
+                                        &precision))
+                                {
+                                    switch (fmtChar)
+                                    {
+                                        case 'g':
+                                        case 'G':
+                                            len = Library_corlib_native_System_Number::Format_G(
+                                                argBuffer,
+                                                deref,
+                                                fmtChar,
+                                                precision,
+                                                negSign,
+                                                decSep);
+                                            break;
+
+                                        case 'x':
+                                        case 'X':
+                                            len = Library_corlib_native_System_Number::Format_X(
+                                                argBuffer,
+                                                deref,
+                                                fmtChar,
+                                                precision);
+                                            break;
+
+                                        case 'f':
+                                        case 'F':
+                                            len = Library_corlib_native_System_Number::Format_F(
+                                                argBuffer,
+                                                deref,
+                                                precision,
+                                                negSign,
+                                                decSep);
+                                            break;
+
+                                        case 'n':
+                                        case 'N':
+                                            // N format is like F but with thousands separators
+                                            len = Library_corlib_native_System_Number::Format_F(
+                                                argBuffer,
+                                                deref,
+                                                precision,
+                                                negSign,
+                                                decSep);
+
+                                            if (len > 0)
+                                            {
+                                                // Insert thousands separators into the integer part.
+                                                // Strategy: build result in tempBuffer, then copy back.
+                                                char tempBuffer[FORMAT_RESULT_BUFFER_SIZE] = {0};
+                                                int srcIdx = 0;
+                                                int dstIdx = 0;
+
+                                                argBuffer[len] = '\0';
+
+                                                // Preserve leading negative sign
+                                                if (argBuffer[srcIdx] == '-')
+                                                {
+                                                    tempBuffer[dstIdx++] = argBuffer[srcIdx++];
+                                                }
+
+                                                // Locate end of integer part (decimal point or end of string)
+                                                int intEnd = srcIdx;
+                                                while (intEnd < len && argBuffer[intEnd] != '.')
+                                                {
+                                                    intEnd++;
+                                                }
+
+                                                // Copy integer digits, inserting ',' every 3 digits from the right
+                                                for (int i = srcIdx; i < intEnd; i++)
+                                                {
+                                                    if (i > srcIdx && (intEnd - i) % 3 == 0)
+                                                    {
+                                                        tempBuffer[dstIdx++] = ',';
+                                                    }
+                                                    tempBuffer[dstIdx++] = argBuffer[i];
+                                                }
+
+                                                // Copy decimal part (decimal point and fractional digits)
+                                                while (intEnd < len)
+                                                {
+                                                    tempBuffer[dstIdx++] = argBuffer[intEnd++];
+                                                }
+
+                                                tempBuffer[dstIdx] = '\0';
+                                                memcpy(argBuffer, tempBuffer, dstIdx + 1);
+                                                len = dstIdx;
+                                            }
+                                            break;
+
+                                        case 'd':
+                                        case 'D':
+                                            len = Library_corlib_native_System_Number::Format_D(
+                                                argBuffer,
+                                                deref,
+                                                precision,
+                                                negSign,
+                                                decSep);
+                                            break;
+
+                                        case 'e':
+                                        case 'E':
+                                            len = Library_corlib_native_System_Number::Format_E(
+                                                argBuffer,
+                                                deref,
+                                                precision,
+                                                fmtChar);
+                                            break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                len = Library_corlib_native_System_Number::Format_G(
+                                    argBuffer,
+                                    deref,
+                                    'G',
+                                    -1,
+                                    negSign,
+                                    decSep);
+                            }
+
+                            if (len > 0)
+                            {
+                                argBuffer[len] = '\0';
+                                argStr = argBuffer;
+                            }
+                            else
+                            {
+                                argStr = "";
+                            }
+                        }
+                        else
+                        {
+                            // check if this is a Type/reflection object (Type.ToString() returns the
+                            // represented type's full name, not "System.RuntimeType")
+                            if (deref->DataType() == DATATYPE_REFLECTION)
+                            {
+                                CLR_RT_TypeDef_Instance td{};
+                                CLR_UINT32 levels = 0;
+
+                                if (CLR_RT_ReflectionDef_Index::Convert(*deref, td, &levels))
+                                {
+                                    char *szBuffer = argBuffer;
+                                    size_t iBuffer = FORMAT_RESULT_BUFFER_SIZE - 1;
+
+                                    if (SUCCEEDED(g_CLR_RT_TypeSystem.BuildTypeName(
+                                            td,
+                                            szBuffer,
+                                            iBuffer,
+                                            CLR_RT_TypeSystem::TYPENAME_FLAGS_FULL,
+                                            levels)))
+                                    {
+                                        *szBuffer = '\0';
+                                        argStr = argBuffer;
+                                    }
+                                }
+                            }
+
+                            // fallback: get object's own type name (Object.ToString() default behavior)
+                            if (argStr == nullptr)
+                            {
+                                CLR_RT_TypeDescriptor desc{};
+
+                                if (SUCCEEDED(desc.InitializeFromObject(*arg)))
+                                {
+                                    char *szBuffer = argBuffer;
+                                    size_t iBuffer = FORMAT_RESULT_BUFFER_SIZE - 1;
+
+                                    if (SUCCEEDED(g_CLR_RT_TypeSystem.BuildTypeName(
+                                            desc.m_handlerCls,
+                                            szBuffer,
+                                            iBuffer,
+                                            CLR_RT_TypeSystem::TYPENAME_FLAGS_FULL,
+                                            0)))
+                                    {
+                                        *szBuffer = '\0';
+                                        argStr = argBuffer;
+                                    }
+                                }
+                            }
+
+                            if (argStr == nullptr)
+                            {
+                                argStr = "";
+                            }
+                        }
+                    }
+
+                    // apply alignment and write to output
+                    int argLen = (int)hal_strlen_s(argStr);
+                    int absAlignment = (alignment < 0) ? -alignment : alignment;
+
+                    if (absAlignment > argLen)
+                    {
+                        int padding = absAlignment - argLen;
+                        if (alignment > 0)
+                        {
+                            // Right align - pad left
+                            for (int i = 0; i < padding; i++)
+                            {
+                                output[length++] = ' ';
+                            }
+
+                            memcpy(&output[length], argStr, argLen);
+                            length += argLen;
+                        }
+                        else
+                        {
+                            // Left align - pad right
+                            memcpy(&output[length], argStr, argLen);
+                            length += argLen;
+
+                            for (int i = 0; i < padding; i++)
+                            {
+                                output[length++] = ' ';
+                            }
+                        }
+                    }
+                    else
+                    {
+                        memcpy(&output[length], argStr, argLen);
+                        length += argLen;
+                    }
+                }
+            }
+            else if (*p == '}')
+            {
+                if (p[1] == '}')
+                {
+                    // Escaped brace
+                    if (pass == 1)
+                    {
+                        output[length] = '}';
+                    }
+
+                    length++;
+                    p += 2;
+                    continue;
+                }
+                else
+                {
+                    NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
+                }
+            }
+            else
+            {
+                // Regular character
+                if (pass == 1)
+                {
+                    output[length] = *p;
+                }
+
+                length++;
+                p++;
+            }
+        }
+
+        if (pass == 0)
+        {
+            // after pass 0: allocate string and get pointer
+            CLR_RT_HeapBlock &blkResult = stack.PushValue();
+            CLR_RT_HeapBlock_String *str = CLR_RT_HeapBlock_String::CreateInstance(blkResult, length);
+            CHECK_ALLOCATION(str);
+            output = (char *)str->StringText();
+        }
+        else
+        {
+            // after pass 1: null terminate the string
+            output[length] = '\0';
+        }
+    }
+
+    NANOCLR_NOCLEANUP();
 }

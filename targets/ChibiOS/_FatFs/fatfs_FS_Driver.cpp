@@ -76,7 +76,7 @@ void FATFS_FS_Driver::Initialize()
 
     // initialize the file handler pool
 #if CACHE_LINE_SIZE > 0
-    chPoolObjectInit(&fileHandlerPool, sizeof(FATFS_FileHandle), NULL);
+    chPoolObjectInit(&fileHandlerPool, sizeof(FATFS_FileHandle), nullptr);
     chPoolLoadArray(&fileHandlerPool, fileHandlerPoolStorage, FILE_HANDLER_POOL_SIZE);
 #endif
 }
@@ -86,7 +86,7 @@ bool FATFS_FS_Driver::InitializeVolume(const VOLUME_ID *volume, const char *path
     // find  a free volume
     FATFS *fs = GetFatFsByVolumeId(volume, true);
 
-    if (fs == NULL)
+    if (fs == nullptr)
     {
         return FALSE;
     }
@@ -166,13 +166,11 @@ HRESULT FATFS_FS_Driver::Format(const VOLUME_ID *volume, const char *volumeLabel
 
 HRESULT FATFS_FS_Driver::GetSizeInfo(const VOLUME_ID *volume, int64_t *totalSize, int64_t *totalFreeSpace)
 {
-    (void)totalSize;
-
     // FATFS *fsPtr = &fs;
     // char buffer[3];
     // DWORD freeClusters, freeSectors, totalSectors;
 
-    // FATFS *fs = GetFatFsByVolumeId(volume, false);
+    FATFS *fs = GetFatFsByVolumeId(volume, false);
 
     FileSystemVolume *currentVolume = FileSystemVolumeList::FindVolume(volume->volumeId);
 
@@ -194,8 +192,21 @@ HRESULT FATFS_FS_Driver::GetSizeInfo(const VOLUME_ID *volume, int64_t *totalSize
     //     *totalFreeSpace = (int64_t)freeSectors * FF_MAX_SS;
     // #endif
 
+    // -1 means "unknown" to the caller
     *totalSize = -1;
+
+    // free space would need f_getfree(), see above
     *totalFreeSpace = -1;
+
+    if (fs != NULL)
+    {
+        // capacity of the file system, from the mounted FATFS object, without walking the FAT
+#if FF_MAX_SS != FF_MIN_SS
+        *totalSize = (int64_t)(fs->n_fatent - 2) * fs->csize * fs->ssize;
+#else
+        *totalSize = (int64_t)(fs->n_fatent - 2) * fs->csize * FF_MAX_SS;
+#endif
+    }
 
     return S_OK;
 }
@@ -221,11 +232,11 @@ HRESULT FATFS_FS_Driver::GetVolumeLabel(const VOLUME_ID *volume, char *volumeLab
     (void)volumeLabel;
     (void)volumeLabelLen;
 
-    // FATFS *fs = NULL;
+    // FATFS *fs = nullptr;
 
     // //fs = GetFileSystemForVolume(volume, true);
 
-    // if (fs == NULL)
+    // if (fs == nullptr)
     // {
     //     return FALSE;
     // }
@@ -249,7 +260,7 @@ HRESULT FATFS_FS_Driver::GetVolumeLabel(const VOLUME_ID *volume, char *volumeLab
 
 //--//
 
-HRESULT FATFS_FS_Driver::Open(const VOLUME_ID *volume, const char *path, void *&handle)
+HRESULT FATFS_FS_Driver::Open(const VOLUME_ID *volume, const char *path, uint32_t access, void *&handle)
 {
     NANOCLR_HEADER();
 
@@ -257,9 +268,10 @@ HRESULT FATFS_FS_Driver::Open(const VOLUME_ID *volume, const char *path, void *&
     int32_t result;
 #endif
 
-    FATFS_FileHandle *fileHandle = NULL;
+    FATFS_FileHandle *fileHandle = nullptr;
     FILINFO info;
     int32_t flags;
+    FRESULT openResult;
     char normalizedPath[FS_MAX_DIRECTORY_LENGTH];
     bool fileExists = false;
     FileSystemVolume *currentVolume;
@@ -271,7 +283,7 @@ HRESULT FATFS_FS_Driver::Open(const VOLUME_ID *volume, const char *path, void *&
     fileHandle = (FATFS_FileHandle *)platform_malloc(sizeof(FATFS_FileHandle));
 #endif
 
-    if (fileHandle == NULL)
+    if (fileHandle == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
     }
@@ -299,16 +311,35 @@ HRESULT FATFS_FS_Driver::Open(const VOLUME_ID *volume, const char *path, void *&
 
     if (fileExists)
     {
-        // file already exists, open for R/W
-        flags = FA_OPEN_EXISTING | FA_WRITE | FA_READ;
+        // FatFs refuses write access to a read-only file
+        if ((info.fattrib & AM_RDO) && (access & FileAccess_Write))
+        {
+            NANOCLR_SET_AND_LEAVE(CLR_E_UNAUTHORIZED_ACCESS);
+        }
+
+        // file already exists, open it
+        flags = FA_OPEN_EXISTING;
     }
     else
     {
-        // file doesn't exist, creat and open for R/W
-        flags = FA_CREATE_NEW | FA_WRITE | FA_READ;
+        // file doesn't exist, create it
+        flags = FA_CREATE_NEW;
     }
 
-    if (f_open(&fileHandle->file, normalizedPath, flags) == FR_OK)
+    // open with the requested access
+    if (access & FileAccess_Read)
+    {
+        flags |= FA_READ;
+    }
+
+    if (access & FileAccess_Write)
+    {
+        flags |= FA_WRITE;
+    }
+
+    openResult = f_open(&fileHandle->file, normalizedPath, flags);
+
+    if (openResult == FR_OK)
     {
         // store the handle
         handle = fileHandle;
@@ -328,14 +359,30 @@ HRESULT FATFS_FS_Driver::Open(const VOLUME_ID *volume, const char *path, void *&
     }
     else
     {
-        NANOCLR_SET_AND_LEAVE(CLR_E_FILE_IO);
+        switch (openResult)
+        {
+            case FR_DENIED:
+            case FR_WRITE_PROTECTED:
+                NANOCLR_SET_AND_LEAVE(CLR_E_UNAUTHORIZED_ACCESS);
+
+            case FR_NO_FILE:
+            case FR_NO_PATH:
+                NANOCLR_SET_AND_LEAVE(CLR_E_FILE_NOT_FOUND);
+
+            default:
+                NANOCLR_SET_AND_LEAVE(CLR_E_FILE_IO);
+        }
     }
 
     NANOCLR_CLEANUP();
 
-    if (fileHandle != NULL)
+    if (fileHandle != nullptr)
     {
+#if CACHE_LINE_SIZE > 0
+        chPoolFree(&fileHandlerPool, fileHandle);
+#else
         platform_free(fileHandle);
+#endif
     }
 
     NANOCLR_CLEANUP_END();
@@ -579,13 +626,13 @@ HRESULT FATFS_FS_Driver::FindOpen(const VOLUME_ID *volume, const char *path, voi
     NANOCLR_HEADER();
 
     char normalizedPath[FS_MAX_DIRECTORY_LENGTH];
-    FATFS_FindFileHandle *findHandle = NULL;
+    FATFS_FindFileHandle *findHandle = nullptr;
     FileSystemVolume *currentVolume;
 
     // allocate file handle
     findHandle = (FATFS_FindFileHandle *)platform_malloc(sizeof(FATFS_FindFileHandle));
 
-    if (findHandle == NULL)
+    if (findHandle == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
     }
@@ -618,7 +665,7 @@ HRESULT FATFS_FS_Driver::FindOpen(const VOLUME_ID *volume, const char *path, voi
 
     NANOCLR_CLEANUP();
 
-    if (findHandle != NULL)
+    if (findHandle != nullptr)
     {
         platform_free(findHandle);
     }
@@ -673,7 +720,7 @@ HRESULT FATFS_FS_Driver::FindNext(void *handle, FS_FILEINFO *fi, bool *fileFound
     fi->FileName = (char *)platform_malloc(fi->FileNameSize + 1);
 
     // sanity check for successfull malloc
-    if (fi->FileName == NULL)
+    if (fi->FileName == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
     }
@@ -878,7 +925,7 @@ HRESULT FATFS_FS_Driver::CreateDirectory(const VOLUME_ID *volume, const char *pa
         // add back the '/' separator
         strcat(tempPath, "/");
 
-        segment = strtok(NULL, "/");
+        segment = strtok(nullptr, "/");
     }
 
     // remove trailing '/'
@@ -1093,7 +1140,7 @@ static FATFS *GetFatFsByVolumeId(const VOLUME_ID *volumeId, bool assignVolume)
         }
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static void FreeFatFsByVolumeId(const VOLUME_ID *volumeId)

@@ -129,17 +129,17 @@ static void GpioEventCallback(void *arg)
 }
 
 // Get pointer to gpio_input_state for Gpio pin
-// return NULL if not found
+// return nullptr if not found
 gpio_input_state *GetInputState(GPIO_PIN pinNumber)
 {
     gpio_input_state *ptr = gpioInputList.FirstNode();
-    while (ptr->Next() != NULL)
+    while (ptr->Next() != nullptr)
     {
         if (ptr->pinNumber == pinNumber)
             return ptr;
         ptr = ptr->Next();
     }
-    return NULL;
+    return nullptr;
 }
 
 // Allocate a new gpio_input_state and add to end of list
@@ -148,12 +148,12 @@ gpio_input_state *AllocateGpioInputState(GPIO_PIN pinNumber)
 {
     gpio_input_state *ptr = GetInputState(pinNumber);
 
-    if (ptr == NULL)
+    if (ptr == nullptr)
     {
         ptr = (gpio_input_state *)platform_malloc(sizeof(gpio_input_state));
 
         // sanity check
-        if (ptr != NULL)
+        if (ptr != nullptr)
         {
             memset(ptr, 0, sizeof(gpio_input_state));
             ptr->pinNumber = pinNumber;
@@ -303,7 +303,7 @@ bool CPU_GPIO_EnableInputPin(
 
     // Link ISR ptr supplied and not already set up
     // CPU_GPIO_EnableInputPin could be called a 2nd time with changed parameters
-    if (pinISR != NULL && (pState->isrPtr == NULL))
+    if (pinISR != nullptr && (pState->isrPtr == nullptr))
     {
         // there are callbacks registered and...
         // the drive mode is input so need to setup the interrupt
@@ -340,7 +340,7 @@ bool CPU_GPIO_EnableInputPin(
                 break;
         }
     }
-    else if (pinISR == NULL && (pState->isrPtr != NULL))
+    else if (pinISR == nullptr && (pState->isrPtr != nullptr))
     {
         // there is no managed handler setup anymore
 
@@ -349,9 +349,9 @@ bool CPU_GPIO_EnableInputPin(
         palDisableLineEvent(GetIoLine(pState->pinNumber));
 
         // clear parameters & configs
-        pState->isrPtr = NULL;
+        pState->isrPtr = nullptr;
         pState->mode = GPIO_INT_NONE;
-        pState->param = NULL;
+        pState->param = nullptr;
         pState->debounceMs = 0;
     }
 
@@ -390,6 +390,9 @@ void CPU_GPIO_DisablePin(GPIO_PIN pinNumber, PinMode driveMode, uint32_t alterna
 
     CPU_GPIO_SetDriveMode(pinNumber, driveMode);
 
+    // On RP2040/RP2350, use palSetLineMode instead of palSetPadMode
+    // because pal_lld_setpadmode is not implemented in the RP PAL LLD.
+    // Uses palSetLineMode for STM32 targets as well, since GetIoLine returns the raw pad number there.
     // get IoLine from pin number
     ioline_t ioLine = GetIoLine(pinNumber);
     palSetLineMode(ioLine, PAL_MODE_ALTERNATE(alternateFunction));
@@ -403,35 +406,40 @@ void CPU_GPIO_DisablePin(GPIO_PIN pinNumber, PinMode driveMode, uint32_t alterna
 // return true if ok
 bool CPU_GPIO_SetDriveMode(GPIO_PIN pinNumber, PinMode driveMode)
 {
-    // get IoLine from pin number
-    ioline_t ioLine = GetIoLine(pinNumber);
+    iomode_t mode;
 
     switch (driveMode)
     {
         case PinMode_Input:
-            palSetLineMode(ioLine, PAL_MODE_INPUT);
+            mode = PAL_MODE_INPUT;
             break;
 
         case PinMode_InputPullDown:
-            palSetLineMode(ioLine, PAL_MODE_INPUT_PULLDOWN);
+            mode = PAL_MODE_INPUT_PULLDOWN;
             break;
 
         case PinMode_InputPullUp:
-            palSetLineMode(ioLine, PAL_MODE_INPUT_PULLUP);
+            mode = PAL_MODE_INPUT_PULLUP;
             break;
 
         case PinMode_Output:
-            palSetLineMode(ioLine, PAL_MODE_OUTPUT_PUSHPULL);
+            mode = PAL_MODE_OUTPUT_PUSHPULL;
             break;
 
         case PinMode_OutputOpenDrain:
-            palSetLineMode(ioLine, PAL_MODE_OUTPUT_OPENDRAIN);
+            mode = PAL_MODE_OUTPUT_OPENDRAIN;
             break;
 
         default:
             // all other modes are NOT supported
             return false;
     }
+
+    // RP targets still use palSetLineMode; GetIoLine returns the raw pad number there.
+    // palSetPadMode is not implemented in the RP PAL LLD.    
+    // STM32 targets: use GetIoLine to encode port/pad into ioline_t
+    ioline_t ioLine = GetIoLine(pinNumber);
+    palSetLineMode(ioLine, mode);
 
     return true;
 }

@@ -22,7 +22,9 @@ list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS ${BASE_PATH_FOR_THIS_MODULE})
 
 # SpawnWear: libpeer public include (peer.h) - PeerConnection.cpp needs it; libpeers ESP-IDF
 # component includes stopped propagating to NF_NativeAssemblies after idf_component.yml was removed.
-list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS C:/Espressif/frameworks/esp-idf-v5.5.4/components/libpeer/include)
+# ESP32_IDF_PATH (config/user-tools-repos.json) - was a hardcoded esp-idf-v5.5.4 path, which silently
+# kept compiling against the old IDF copy of libpeer after an IDF upgrade.
+list(APPEND SpawnDev.WebRTC_INCLUDE_DIRS ${ESP32_IDF_PATH}/components/libpeer/include)
 
 
 # source files

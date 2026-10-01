@@ -308,7 +308,7 @@ int Sockets_LWIP_Driver::Read(int ComPortNum, char *Data, size_t size)
         }
     }
 
-    if (SOCK_SOCKET_ERROR != HAL_SOCK_select(SOCK_FD_SETSIZE, &readSet, NULL, NULL, &timeout))
+    if (SOCK_SOCKET_ERROR != HAL_SOCK_select(SOCK_FD_SETSIZE, &readSet, nullptr, nullptr, &timeout))
     {
         // we always perform an accept so that we handle pending connections
         // if we already are connected and the debug stream socket is still active, then we immediately close
@@ -452,24 +452,27 @@ bool Sockets_LWIP_Driver::UpgradeToSsl(
                 0x04,
                 (const char *)pDeviceCert,
                 deviceCertLen,
-                NULL,
+                nullptr,
                 0,
-                NULL,
+                nullptr,
                 0,
                 g_DebuggerPort_SslCtx_Handle,
-                false))
+                false) == SslError_None)
         {
-            int32_t ret;
+            int mbedtlsCode = 0;
+            SslError sslErr;
 
             SSL_AddCertificateAuthority(g_DebuggerPort_SslCtx_Handle, (const char *)pCACert, caCertLen);
 
-            do
-            {
-                ret =
-                    SSL_Connect(g_Sockets_LWIP_Driver.m_SocketDebugStream, szTargetHost, g_DebuggerPort_SslCtx_Handle);
-            } while (ret == SOCK_EWOULDBLOCK || ret == SOCK_TRY_AGAIN);
+            // SSL_Connect runs the handshake in blocking mode and loops internally
+            // on WANT_READ / WANT_WRITE, returning only on a terminal outcome
+            sslErr = SSL_Connect(
+                g_Sockets_LWIP_Driver.m_SocketDebugStream,
+                szTargetHost,
+                g_DebuggerPort_SslCtx_Handle,
+                &mbedtlsCode);
 
-            if (ret != 0)
+            if (sslErr != SslError_None)
             {
                 SSL_CloseSocket(g_Sockets_LWIP_Driver.m_SocketDebugStream);
                 SSL_ExitContext(g_DebuggerPort_SslCtx_Handle);
@@ -479,7 +482,7 @@ bool Sockets_LWIP_Driver::UpgradeToSsl(
                 g_Sockets_LWIP_Driver.m_usingSSL = TRUE;
             }
 
-            return ret == 0;
+            return sslErr == SslError_None;
         }
     }
 
@@ -503,7 +506,7 @@ bool Sockets_LWIP_Driver::InitializeMulticastDiscovery()
     if (g_Sockets_LWIP_Driver.s_discoveryInitialized)
         return TRUE;
 
-    MulticastResponseContinuation.InitializeCallback(MulticastDiscoveryRespond, NULL);
+    MulticastResponseContinuation.InitializeCallback(MulticastDiscoveryRespond, nullptr);
 
     // set up discovery socket to list to defined discovery port for any ip address
     memset(&sockAddr, 0, sizeof(sockAddr));
@@ -580,7 +583,7 @@ void Sockets_LWIP_Driver::MulticastDiscoverySchedule()
         privRead.fd_array[0] = g_Sockets_LWIP_Driver.m_multicastSocket;
         privRead.fd_count = 1;
 
-        if (1 == HAL_SOCK_select(1, &privRead, NULL, NULL, &to))
+        if (1 == HAL_SOCK_select(1, &privRead, nullptr, nullptr, &to))
         {
             if (!MulticastResponseContinuation.IsLinked())
             {

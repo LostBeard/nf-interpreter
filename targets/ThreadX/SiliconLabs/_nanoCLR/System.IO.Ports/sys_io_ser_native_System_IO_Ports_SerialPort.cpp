@@ -65,7 +65,7 @@ static NF_PAL_UART *GetUartPAL(uint8_t index)
 #endif
 
         default:
-            return NULL;
+            return nullptr;
     }
 }
 
@@ -124,19 +124,21 @@ static void UsartRxHandler(uint8_t index)
             Events_Set(SYSTEM_EVENT_FLAG_COM_IN);
         }
     }
-    else if (palUart->NewLineChar > 0 && newChar == palUart->NewLineChar)
-    {
-        // fire event for new line char found
-        Events_Set(SYSTEM_EVENT_FLAG_COM_IN);
-    }
     else
     {
-        // no read operation ongoing, so fire an event, if the available bytes are above the threshold
+        // no synchronous read pending: wake up a blocked ReadLine(), if the new line char was received
+        if (palUart->NewLineChar > 0 && newChar == palUart->NewLineChar)
+        {
+            Events_Set(SYSTEM_EVENT_FLAG_COM_IN);
+        }
+
+        // fire an event for DataReceived, if the available bytes are at/above the threshold
         if (palUart->RxRingBuffer.Length() >= palUart->ReceivedBytesThreshold)
         {
-            // post a managed event with the port index and event code (check if this is the watch char or just another
-            // char)
-            // TODO: check if callbacks are registered so this is called only if there is anyone listening otherwise
+            // post a managed event with the port index and event code (check if this is the watch char or just
+            // another char)
+            // TODO: check if callbacks are registered so this is called only if there is anyone listening
+            // otherwise
             PostManagedEvent(
                 EVENT_SERIAL,
                 0,
@@ -154,13 +156,13 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::get_BytesToRead___
 
     NF_PAL_UART *palUart;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -200,7 +202,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Read___I4__SZARRAY
 
     CLR_RT_HeapBlock hbTimeout;
     CLR_RT_HeapBlock_Array *dataBuffer;
-    NF_PAL_UART *palUart = NULL;
+    NF_PAL_UART *palUart = nullptr;
 
     uint8_t *data;
 
@@ -213,7 +215,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Read___I4__SZARRAY
     int64_t *timeoutTicks;
     bool eventResult = true;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -256,7 +258,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Read___I4__SZARRAY
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -338,14 +340,14 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadExisting___STR
 {
     NANOCLR_HEADER();
 
-    NF_PAL_UART *palUart = NULL;
+    NF_PAL_UART *palUart = nullptr;
 
-    uint8_t *buffer = NULL;
+    uint8_t *buffer = nullptr;
     uint32_t bufferLength;
 
     CLR_RT_HeapBlock &top = stack.PushValue();
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -356,7 +358,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadExisting___STR
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -370,7 +372,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadExisting___STR
         buffer = (uint8_t *)platform_malloc(bufferLength);
 
         // sanity check
-        if (buffer == NULL)
+        if (buffer == nullptr)
         {
             NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
         }
@@ -383,12 +385,12 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadExisting___STR
     else
     {
         // create an empty <string>
-        NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_String::CreateInstance(top, (const char *)NULL));
+        NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_String::CreateInstance(top, (const char *)nullptr));
     }
 
     NANOCLR_CLEANUP();
 
-    if (buffer != NULL)
+    if (buffer != nullptr)
     {
         platform_free(buffer);
     }
@@ -401,17 +403,17 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadLine___STRING(
     NANOCLR_HEADER();
 
     CLR_RT_HeapBlock hbTimeout;
-    NF_PAL_UART *palUart = NULL;
+    NF_PAL_UART *palUart = nullptr;
 
-    uint8_t *line = NULL;
-    const char *newLine = NULL;
+    uint8_t *line = nullptr;
+    const char *newLine = nullptr;
     uint32_t newLineLength;
 
     int64_t *timeoutTicks;
     bool eventResult = true;
     bool newLineFound = false;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -426,7 +428,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadLine___STRING(
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -449,8 +451,8 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadLine___STRING(
             // get new line from field
             newLine = pThis[FIELD___newLine].RecoverString();
 
-            // sanity check for NULL string
-            if (newLine == NULL)
+            // sanity check for nullptr string
+            if (newLine == nullptr)
             {
                 NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
             }
@@ -471,9 +473,6 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadLine___STRING(
         // wait for event
         NANOCLR_CHECK_HRESULT(
             g_CLR_RT_ExecutionEngine.WaitEvents(stack.m_owningThread, *timeoutTicks, Event_SerialPortIn, eventResult));
-
-        // clear the new line watch char
-        palUart->NewLineChar = 0;
 
         if (eventResult)
         {
@@ -499,7 +498,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::ReadLine___STRING(
     stack.SetResult_String((const char *)line);
 
     // free memory, if needed
-    if (line != NULL)
+    if (line != nullptr)
     {
         platform_free(line);
     }
@@ -511,7 +510,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Write___VOID__SZAR
 {
     NANOCLR_HEADER();
 
-    NF_PAL_UART *palUart = NULL;
+    NF_PAL_UART *palUart = nullptr;
 
     CLR_RT_HeapBlock_Array *dataBuffer;
     CLR_RT_HeapBlock hbTimeout;
@@ -523,7 +522,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Write___VOID__SZAR
     int32_t count = 0;
     int32_t offset = 0;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -534,7 +533,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Write___VOID__SZAR
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -623,7 +622,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::Write___VOID__SZAR
     stack.SetResult_U4(count);
 
     // null pointers and vars
-    pThis = NULL;
+    pThis = nullptr;
 
     NANOCLR_NOCLEANUP();
 }
@@ -632,7 +631,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeDispose___VO
 {
     NANOCLR_HEADER();
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -695,8 +694,10 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeInit___VOID(
     NF_PAL_UART *palUart;
     int32_t bufferSize;
     uint8_t watchChar;
+    int32_t receivedBytesThreshold;
+    const char *newLine;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -749,7 +750,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeInit___VOID(
     palUart->RxBuffer = (uint8_t *)platform_malloc(bufferSize);
 
     // sanity check
-    if (palUart->RxBuffer == NULL)
+    if (palUart->RxBuffer == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_MEMORY);
     }
@@ -766,6 +767,26 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeInit___VOID(
         palUart->WatchChar = watchChar;
     }
 
+    // get received bytes threshold
+    // managed setter guarantees > 0 once explicitly set; a native value of 0 only happens if it was never set
+    receivedBytesThreshold = pThis[FIELD___receivedBytesThreshold].NumericByRef().s4;
+    palUart->ReceivedBytesThreshold = (receivedBytesThreshold > 0) ? (uint32_t)receivedBytesThreshold : 1;
+
+    // get "new line" and cache its last character, mirroring WatchChar
+    // not every port's init path resets NewLineChar (only USART1 does, via InitConfig_USART1), so clear it here
+    // first to avoid leaking a stale value from a previous Open() when the managed newLine is null or empty
+    palUart->NewLineChar = 0;
+    newLine = pThis[FIELD___newLine].RecoverString();
+    if (newLine != NULL)
+    {
+        uint32_t newLineLength = hal_strlen_s(newLine);
+
+        if (newLineLength > 0)
+        {
+            palUart->NewLineChar = newLine[newLineLength - 1];
+        }
+    }
+
     // call the configure
     return NativeConfig___VOID(stack);
 
@@ -776,15 +797,15 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeConfig___VOI
 {
     NANOCLR_HEADER();
 
-    NF_PAL_UART *palUart = NULL;
+    NF_PAL_UART *palUart = nullptr;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -874,7 +895,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeConfig___VOI
     }
 
     // null pointers and vars
-    pThis = NULL;
+    pThis = nullptr;
 
     NANOCLR_NOCLEANUP();
 }
@@ -885,13 +906,13 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeSetWatchChar
 
     NF_PAL_UART *palUart;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -907,18 +928,18 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeWriteString_
 {
     NANOCLR_HEADER();
 
-    NF_PAL_UART *palUart = NULL;
+    NF_PAL_UART *palUart = nullptr;
 
     CLR_RT_HeapBlock hbTimeout;
     int64_t *timeoutTicks;
     bool eventResult = true;
 
     bool isNewAllocation = false;
-    char *buffer = NULL;
+    char *buffer = nullptr;
     uint32_t bufferLength = 0;
     int32_t length = 0;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -927,7 +948,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeWriteString_
         NANOCLR_SET_AND_LEAVE(CLR_E_OBJECT_DISPOSED);
     }
 
-    if (stack.Arg1().RecoverString() == NULL)
+    if (stack.Arg1().RecoverString() == nullptr)
     {
         // text string it's empty so there is noting to do here
         stack.SetResult_U4(0);
@@ -936,7 +957,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeWriteString_
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL((int)pThis[FIELD___portIndex].NumericByRef().s4);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
@@ -1020,7 +1041,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeWriteString_
     }
 
     // null pointers and vars
-    pThis = NULL;
+    pThis = nullptr;
 
     NANOCLR_NOCLEANUP();
 }
@@ -1034,7 +1055,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeReceivedByte
     int32_t threshold;
     uint8_t portIndex;
 
-    // get a pointer to the managed object instance and check that it's not NULL
+    // get a pointer to the managed object instance and check that it's not nullptr
     CLR_RT_HeapBlock *pThis = stack.This();
     FAULT_ON_NULL(pThis);
 
@@ -1050,7 +1071,7 @@ HRESULT Library_sys_io_ser_native_System_IO_Ports_SerialPort::NativeReceivedByte
 
     // Choose the driver for this SerialDevice
     palUart = GetUartPAL(portIndex);
-    if (palUart == NULL)
+    if (palUart == nullptr)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }

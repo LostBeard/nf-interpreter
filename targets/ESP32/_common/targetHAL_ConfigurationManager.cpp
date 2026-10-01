@@ -78,7 +78,7 @@ int32_t ConfigurationManager_FindConfigurationBlockSize(
     int32_t configSize = 0;
 
     handle = ConfigStorage_OpenFile(configuration, configurationIndex, false, false);
-    if (handle != NULL)
+    if (handle != nullptr)
     {
         configSize = ConfigStorage_FileSize(handle);
 #ifdef DEBUG_CONFIG
@@ -100,7 +100,7 @@ bool StoreConfigBlock(
     FILE *fileHandle;
 
     fileHandle = ConfigStorage_OpenFile(configType, configurationIndex, true, false);
-    if (fileHandle != NULL)
+    if (fileHandle != nullptr)
     {
         result = ConfigStorage_WriteFile(fileHandle, (uint8_t *)configBlock, writeSize);
 #ifdef DEBUG_CONFIG
@@ -128,7 +128,7 @@ bool AppendConfigBlock(
 
     fileHandle = ConfigStorage_OpenFile(configType, configurationIndex, true, true);
 
-    if (fileHandle != NULL)
+    if (fileHandle != nullptr)
     {
         result = ConfigStorage_AppendFile(fileHandle, (uint8_t *)configBlock, writeSize);
 
@@ -175,7 +175,7 @@ void ConfigurationManager_EnumerateConfigurationBlocks()
         netTypes[networkCount++] = NetworkInterfaceType_WirelessAP;
 #endif
 
-#ifdef ESP32_ETHERNET_SUPPORT
+#if defined(CONFIG_ESP32_ETHERNET_SUPPORT) && CONFIG_ESP32_ETHERNET_SUPPORT == TRUE
         netTypes[networkCount++] = NetworkInterfaceType_Ethernet;
         ethernetEnabled = true;
 #endif
@@ -210,7 +210,8 @@ void ConfigurationManager_EnumerateConfigurationBlocks()
 
         // have to enumerate again to pick it up
         networkConfigs = ConfigStorage_FindNetworkConfigurationBlocks();
-        if (!networkConfigs) {
+        if (!networkConfigs)
+        {
             ESP_LOGE(TAG, "Re-enumeration of config returned NULL");
             return;
         }
@@ -222,7 +223,7 @@ void ConfigurationManager_EnumerateConfigurationBlocks()
         (HAL_CONFIGURATION_NETWORK_WIRELESS80211 *)ConfigStorage_FindNetworkWireless80211ConfigurationBlocks();
 
     // check wireless configs count
-    if (networkWirelessConfigs != NULL && networkWirelessConfigs->Count == 0)
+    if (networkWirelessConfigs != nullptr && networkWirelessConfigs->Count == 0)
     {
         // allocate memory for ONE network configuration
         HAL_Configuration_Wireless80211 *wirelessConfig =
@@ -247,7 +248,7 @@ void ConfigurationManager_EnumerateConfigurationBlocks()
     HAL_CONFIGURATION_NETWORK_WIRELESSAP *wirelessAPconfigs = ConfigStorage_FindNetworkWirelessAPConfigurationBlocks();
 
     // check wireless AP configs count
-    if (wirelessAPconfigs != NULL && wirelessAPconfigs->Count == 0)
+    if (wirelessAPconfigs != nullptr && wirelessAPconfigs->Count == 0)
     {
         // allocate memory for ONE wireless AP configuration
         HAL_Configuration_WirelessAP *wirelessAPConfig =
@@ -315,7 +316,8 @@ void InitialiseWirelessDefaultConfig(HAL_Configuration_Wireless80211 *config, ui
     // Once smart config has run will start up automatically and reconnect of disconnected
     // Application will have to disable Wi-Fi to save power etc
     // if Ethernet enable then disable
-    // Disable Wi-Fi if Ethernet is enabled for all targets except esp32_p4 which by default will have both active at same time
+    // Disable Wi-Fi if Ethernet is enabled for all targets except esp32_p4 which by default will have both active at
+    // same time
 #if !defined(CONFIG_IDF_TARGET_ESP32P4)
     if (ethernetEnabled)
     {
@@ -813,13 +815,13 @@ HAL_Configuration_Wireless80211 *ConfigurationManager_GetWirelessConfigurationFr
         }
     }
 
-    if (wirelessConfig != NULL)
+    if (wirelessConfig != nullptr)
     {
         platform_free(wirelessConfig);
     }
 
     // not found, or failed to allocate memory
-    return NULL;
+    return nullptr;
 }
 
 HAL_Configuration_WirelessAP *ConfigurationManager_GetWirelessAPConfigurationFromId(uint32_t configurationId)
@@ -846,13 +848,13 @@ HAL_Configuration_WirelessAP *ConfigurationManager_GetWirelessAPConfigurationFro
         }
     }
 
-    if (wirelessAPConfig != NULL)
+    if (wirelessAPConfig != nullptr)
     {
         platform_free(wirelessAPConfig);
     }
 
     // not found, or failed to allocate memory
-    return NULL;
+    return nullptr;
 }
 
 HAL_Configuration_X509CaRootBundle *ConfigurationManager_GetCertificateStore()
@@ -868,7 +870,7 @@ HAL_Configuration_X509CaRootBundle *ConfigurationManager_GetCertificateStore()
             HAL_Configuration_X509CaRootBundle *certStore =
                 (HAL_Configuration_X509CaRootBundle *)platform_malloc(certSize);
 
-            if (certStore != NULL)
+            if (certStore != nullptr)
             {
                 if (ConfigurationManager_GetConfigurationBlock(
                         certStore,
@@ -884,7 +886,7 @@ HAL_Configuration_X509CaRootBundle *ConfigurationManager_GetCertificateStore()
     }
 
     // not found, or failed to allocate memory
-    return NULL;
+    return nullptr;
 }
 
 HAL_Configuration_X509DeviceCertificate *ConfigurationManager_GetDeviceCertificate()
@@ -900,7 +902,7 @@ HAL_Configuration_X509DeviceCertificate *ConfigurationManager_GetDeviceCertifica
             HAL_Configuration_X509DeviceCertificate *deviceCert =
                 (HAL_Configuration_X509DeviceCertificate *)platform_malloc(certSize);
 
-            if (deviceCert != NULL)
+            if (deviceCert != nullptr)
             {
                 if (ConfigurationManager_GetConfigurationBlock(
                         deviceCert,
@@ -916,7 +918,7 @@ HAL_Configuration_X509DeviceCertificate *ConfigurationManager_GetDeviceCertifica
     }
 
     // not found, or failed to allocate memory
-    return NULL;
+    return nullptr;
 }
 
 // default implementation

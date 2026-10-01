@@ -48,6 +48,9 @@ static const char *TAG = "SDCard";
 
 sdmmc_card_t *card;
 
+// drive letter the card above is mounted under, 0 when it is not mounted
+char cardDriveLetter;
+
 // 2026-05-04: surface SD-mount diagnostics through the wire-protocol debug
 // channel since CONFIG_LOG_DEFAULT_LEVEL_NONE=y silences ESP_LOG output.
 // Implementation in Target_System_IO_FileSystem_Diag.cpp.
@@ -70,6 +73,7 @@ bool Storage_UnMountSDCard(int driveIndex)
     }
 
     card = NULL;
+    cardDriveLetter = 0;
 
     return true;
 }
@@ -195,7 +199,15 @@ bool Storage_MountMMC(bool bit1Mode, int driveIndex)
         errCode = esp_vfs_fat_sdmmc_mount(mountPoint, &host, &slot_config, &mount_config, &card);
     }
 
-    return LogMountResult(errCode);
+    if (!LogMountResult(errCode))
+    {
+        return false;
+    }
+
+    // only stored on success, a failed mount leaves no card to bind the volume to
+    cardDriveLetter = INDEX0_DRIVE_LETTER[0] + driveIndex;
+
+    return true;
 }
 #endif
 
@@ -299,7 +311,15 @@ bool Storage_MountSpi(int spiBus, uint32_t csPin, int driveIndex)
         vTaskDelay(pdMS_TO_TICKS(40));
     }
 
-    return LogMountResult(errCode);
+    if (!LogMountResult(errCode))
+    {
+        return false;
+    }
+
+    // only stored on success, a failed mount leaves no card to bind the volume to
+    cardDriveLetter = INDEX0_DRIVE_LETTER[0] + driveIndex;
+
+    return true;
 }
 
 #endif

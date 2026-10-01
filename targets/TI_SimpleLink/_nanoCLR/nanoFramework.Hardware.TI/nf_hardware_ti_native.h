@@ -7,7 +7,6 @@
 #define NF_HARDWARE_TI_NATIVE_H
 
 #include <nanoCLR_Interop.h>
-#include <nanoCLR_Runtime.h>
 #include <nanoPackStruct.h>
 #include <corlib_native.h>
 
@@ -66,4 +65,4 @@ struct Library_nf_hardware_ti_native_nanoFramework_Hardware_TI_Utilities
 
 extern const CLR_RT_NativeAssemblyData g_CLR_AssemblyNative_nanoFramework_Hardware_TI;
 
-#endif //NF_HARDWARE_TI_NATIVE_H
+#endif // NF_HARDWARE_TI_NATIVE_H

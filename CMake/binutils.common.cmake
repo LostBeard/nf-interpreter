@@ -53,11 +53,6 @@ macro(nf_common_compiler_definitions)
         target_compile_definitions(${NFCCF_TARGET} PUBLIC -DNANOCLR_ENABLE_SOURCELEVELDEBUGGING)
     endif()
 
-    # set compiler definition for RTM build option
-    if(NF_BUILD_RTM)
-        target_compile_definitions(${NFCCF_TARGET} PUBLIC -DBUILD_RTM)
-    endif()
-
     # set compiler definition for using Application Domains feature
     if(NF_FEATURE_USE_APPDOMAINS)
         target_compile_definitions(${NFCCF_TARGET} PUBLIC -DNANOCLR_USE_APPDOMAINS)
@@ -237,6 +232,12 @@ macro(nf_add_common_sources)
             ${Graphics_Sources}
         )
 
+        # include storage operation support, if feature is enabled
+        if(NF_FEATURE_HAS_ACCESSIBLE_STORAGE)
+            target_sources(${NFACS_TARGET}.elf PUBLIC
+                ${CMAKE_SOURCE_DIR}/src/HAL/nanoHAL_StorageOperation.cpp)
+        endif()
+
     endif()
 
 endmacro()
@@ -310,7 +311,7 @@ function(nf_generate_hex_package file1 file2 outputfilename)
 endfunction()
 
 # generates a binary file with nanoBooter + nanoCLR at the proper addresses
-# ready to be drag & drop on targets that feature DAPLink 
+# ready to be drag & drop on targets that feature DAPLink
 function(nf_generate_bin_package file1 file2 offset outputfilename)
 
     add_custom_command(
@@ -657,11 +658,7 @@ macro(nf_setup_target_build_common)
         )
 
         # platform implementation of hardware random provider
-        if(EXISTS ${TARGET_BASE_LOCATION}/mbedtls_entropy_hardware_pool.c)
-            target_sources(mbedcrypto PRIVATE ${TARGET_BASE_LOCATION}/mbedtls_entropy_hardware_pool.c)
-        else()
-            target_sources(mbedcrypto PRIVATE ${BASE_PATH_FOR_CLASS_LIBRARIES_MODULES}/mbedtls_entropy_hardware_pool.c)
-        endif()
+        target_sources(mbedcrypto PRIVATE ${BASE_PATH_FOR_CLASS_LIBRARIES_MODULES}/mbedtls_entropy_hardware_pool.c)
 
         nf_set_compile_options(TARGET mbedcrypto)
         nf_set_compile_options(TARGET mbedx509)
@@ -672,7 +669,8 @@ macro(nf_setup_target_build_common)
 
         # need to unset several flags for MbedTLS to compile correctly
         target_compile_options(mbedtls PRIVATE -Wno-undef -Wno-error=unused-function -Wno-error=discarded-qualifiers -Wno-error=unused-parameter)
-        target_compile_options(mbedcrypto PRIVATE -Wno-undef -Wno-error=unused-function -Wno-error=discarded-qualifiers -Wno-error=unused-parameter)
+        # Mbed TLS bignum ARM inline assembly can exceed available registers at -O0.
+        target_compile_options(mbedcrypto PRIVATE $<$<CONFIG:Debug>:-Og> -Wno-undef -Wno-error=unused-function -Wno-error=discarded-qualifiers -Wno-error=unused-parameter)
         target_compile_options(mbedx509 PRIVATE -Wno-undef -Wno-error=unused-function -Wno-error=discarded-qualifiers -Wno-error=unused-parameter)
 
     endif()
@@ -776,7 +774,7 @@ function(nf_add_mbedtls_library)
 
     # set tag for currently supported version
     # WHEN CHANGING THIS MAKE SURE TO UPDATE THE DEV CONTAINERS
-    set(MBEDTLS_GIT_TAG "mbedtls-3.6.5")
+    set(MBEDTLS_GIT_TAG "mbedtls-3.6.7")
 
     # set options for Mbed TLS
     option(ENABLE_TESTING "no testing when building Mbed TLS." OFF)
@@ -789,6 +787,7 @@ function(nf_add_mbedtls_library)
             mbedtls
             GIT_REPOSITORY https://github.com/ARMmbed/mbedtls
             GIT_TAG ${MBEDTLS_GIT_TAG}
+            UPDATE_DISCONNECTED ON
         )
 
     else()
@@ -846,6 +845,7 @@ function(nf_add_lwip_library)
             lwIP
             GIT_REPOSITORY https://github.com/lwip-tcpip/lwip.git
             GIT_TAG ${LWIP_GIT_TAG}
+            UPDATE_DISCONNECTED ON
         )
 
     else()
@@ -869,9 +869,11 @@ function(nf_add_lwip_library)
     endif()
 
     ########################################################################
-    # add lwipdocs target, just to keep cmake happy
-    # after moving to a more recent lwIP versions this is not needed anymore
-    add_custom_target(lwipdocs)
+    # add lwipdocs target, just to keep cmake happy when Doxygen is not found
+    # (newer lwIP versions create this target themselves when Doxygen is present)
+    if(NOT TARGET lwipdocs)
+        add_custom_target(lwipdocs)
+    endif()
     ########################################################################
 
 endfunction()
@@ -901,6 +903,7 @@ function(nf_add_cyw43_driver_library)
             GIT_TAG ${CYW43_DRIVER_GIT_TAG}
             GIT_SHALLOW TRUE
             GIT_CONFIG "core.fileMode=false"
+            UPDATE_DISCONNECTED ON
         )
 
     else()

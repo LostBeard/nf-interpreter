@@ -5,10 +5,8 @@
 //
 #include "Diagnostics.h"
 
-#ifdef _WIN64
 #include <inttypes.h>
 #include <stdint.h>
-#endif
 
 #if defined(VIRTUAL_DEVICE)
 #include "nanoCLR_native.h"
@@ -25,16 +23,13 @@ HRESULT CLR_PRF_Profiler::CreateInstance()
     NANOCLR_HEADER();
 
     g_CLR_PRF_Profiler.m_packetSeqId = 0;
-    g_CLR_PRF_Profiler.m_stream = NULL;
+    g_CLR_PRF_Profiler.m_stream = nullptr;
     g_CLR_PRF_Profiler.m_lastTimestamp =
-        (CLR_UINT32)((HAL_Time_CurrentTime() + ((1ULL << CLR_PRF_CMDS::Bits::TimestampShift) - 1)) >>
+        (CLR_UINT32)((CLR_UINT64)(HAL_Time_CurrentTime() + ((1ull << CLR_PRF_CMDS::Bits::TimestampShift) - 1)) >>
                      CLR_PRF_CMDS::Bits::TimestampShift);
-
     g_CLR_PRF_Profiler.m_currentAssembly = 0;
     g_CLR_PRF_Profiler.m_currentThreadPID = 0;
-    NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_MemoryStream::CreateInstance(g_CLR_PRF_Profiler.m_stream, NULL, 0));
-
-    g_CLR_PRF_Profiler.m_initialized = true;
+    NANOCLR_CHECK_HRESULT(CLR_RT_HeapBlock_MemoryStream::CreateInstance(g_CLR_PRF_Profiler.m_stream, nullptr, 0));
 
 #if defined(VIRTUAL_DEVICE)
     // need to do the here to send the memory layout in the first packet
@@ -67,23 +62,23 @@ void CLR_PRF_Profiler::SendMemoryLayout()
     // Send Memory Layout
     m_stream->WriteBits(CLR_PRF_CMDS::c_Profiling_Memory_Layout, CLR_PRF_CMDS::Bits::CommandHeader);
 
-#if defined(_WIN64)
-    PackAndWriteBits((CLR_UINT32)((CLR_UINT64)s_CLR_RT_Heap.m_location >> 32));
+#if defined(NANOCLR_64BIT_POINTERS)
+    PackAndWriteBits((CLR_UINT32)((CLR_UINT64)s_CLR_RT_Heap.location >> 32));
 #endif
-    PackAndWriteBits((CLR_UINT32)s_CLR_RT_Heap.m_location);
+    PackAndWriteBits((CLR_UINT32)s_CLR_RT_Heap.location);
 
-    PackAndWriteBits(s_CLR_RT_Heap.m_size);
+    PackAndWriteBits(s_CLR_RT_Heap.size);
 
     Stream_Send();
 
 #if defined(VIRTUAL_DEVICE)
-    if (g_ProfilerMessageCallback != NULL)
+    if (g_ProfilerMessageCallback != nullptr)
     {
         std::string memoryLayout = std::format(
             "** Memory layout **\r\n    start:0x{:X}\r\n      end:0x{:X}\r\n     size:0x{:X}\r\n",
-            (unsigned long long)s_CLR_RT_Heap.m_location,
-            (unsigned long long)s_CLR_RT_Heap.m_location + s_CLR_RT_Heap.m_size,
-            s_CLR_RT_Heap.m_size);
+            (unsigned long long)s_CLR_RT_Heap.location,
+            (unsigned long long)s_CLR_RT_Heap.location + s_CLR_RT_Heap.size,
+            s_CLR_RT_Heap.size);
 
         g_ProfilerMessageCallback(memoryLayout.c_str());
     }
@@ -164,7 +159,7 @@ HRESULT CLR_PRF_Profiler::DumpRoots()
         _ASSERTE(fin->m_object->DataType() != DATATYPE_FREEBLOCK);
         _ASSERTE(fin->m_object->DataType() != DATATYPE_CACHEDBLOCK);
 
-        DumpRoot(fin->m_object, CLR_PRF_CMDS::RootTypes::Root_Finalizer, 0, NULL);
+        DumpRoot(fin->m_object, CLR_PRF_CMDS::RootTypes::Root_Finalizer, 0, nullptr);
     }
     NANOCLR_FOREACH_NODE_END();
 
@@ -174,7 +169,7 @@ HRESULT CLR_PRF_Profiler::DumpRoots()
         _ASSERTE(fin->m_object->DataType() != DATATYPE_FREEBLOCK);
         _ASSERTE(fin->m_object->DataType() != DATATYPE_CACHEDBLOCK);
 
-        DumpRoot(fin->m_object, CLR_PRF_CMDS::RootTypes::Root_Finalizer, 0, NULL);
+        DumpRoot(fin->m_object, CLR_PRF_CMDS::RootTypes::Root_Finalizer, 0, nullptr);
     }
     NANOCLR_FOREACH_NODE_END();
 
@@ -182,7 +177,7 @@ HRESULT CLR_PRF_Profiler::DumpRoots()
     // Iterate through all the appdomains
     NANOCLR_FOREACH_NODE(CLR_RT_AppDomain, appDomain, g_CLR_RT_ExecutionEngine.m_appDomains)
     {
-        DumpRoot(appDomain, CLR_PRF_CMDS::RootTypes::Root_AppDomain, 0, NULL);
+        DumpRoot(appDomain, CLR_PRF_CMDS::RootTypes::Root_AppDomain, 0, nullptr);
     }
     NANOCLR_FOREACH_NODE_END();
 #endif
@@ -190,7 +185,7 @@ HRESULT CLR_PRF_Profiler::DumpRoots()
     // Iterate through all the assemblies.
     NANOCLR_FOREACH_ASSEMBLY(g_CLR_RT_TypeSystem)
     {
-        DumpRoot(pASSM, CLR_PRF_CMDS::RootTypes::Root_Assembly, 0, NULL);
+        DumpRoot(pASSM, CLR_PRF_CMDS::RootTypes::Root_Assembly, 0, nullptr);
     }
     NANOCLR_FOREACH_ASSEMBLY_END();
 
@@ -202,7 +197,7 @@ HRESULT CLR_PRF_Profiler::DumpRoots()
         {
             NANOCLR_FOREACH_NODE(CLR_RT_Thread, th, *threadLists[list])
             {
-                DumpRoot(th, CLR_PRF_CMDS::RootTypes::Root_Thread, 0, NULL);
+                DumpRoot(th, CLR_PRF_CMDS::RootTypes::Root_Thread, 0, nullptr);
             }
             NANOCLR_FOREACH_NODE_END();
         }
@@ -239,7 +234,7 @@ void CLR_PRF_Profiler::DumpRoot(
     }
     else
     {
-        _ASSERTE(source == NULL);
+        _ASSERTE(source == nullptr);
     }
 }
 
@@ -247,19 +242,19 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
 {
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
     // Object Proto:
-    //  Free blocked and cached blocks are considered free memory and are not dumped.
-    //  All other types:
-    //  8 bits - Profiling_HeapDump_Object
-    //  32 bit pointer
-    //  16 bit size
-    //   8 bit - DataType() const
-    //  32 bits are TypeDef info >>>> iff DataType == CLASSTYPE || DataType == VALUETYPE || DataType == SZARRAY <<<<
-    //  16 bits are Array Level info >>>> iff DataType == SZARRAY <<<<
-    //  1 bit - Reference Follows
-    //     0 - No more references. End of Packet
-    //     1 - 32-bit pointer to reference follows. Repeat.
+    // Free blocked and cached blocks are considered free memory and are not dumped.
+    // All other types:
+    // 8 bits - Profiling_HeapDump_Object
+    // 32 bit pointer
+    // 16 bit size
+    //  8 bit - DataType() const
+    // 32 bits are TypeDef info >>>> iff DataType == CLASSTYPE || DataType == VALUETYPE || DataType == SZARRAY <<<<
+    // 16 bits are Array Level info >>>> iff DataType == SZARRAY <<<<
+    // 1 bit - Reference Follows
+    //    0 - No more references. End of Packet
+    //    1 - 32-bit pointer to reference follows. Repeat.
 
-    CLR_DataType dt = ptr->DataType();
+    NanoCLRDataType dt = ptr->DataType();
     _ASSERTE(dt < DATATYPE_FIRST_INVALID);
     _ASSERTE(
         sizeof(struct CLR_RT_HeapBlock) ==
@@ -324,9 +319,9 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
             case DATATYPE_CLASS:
             case DATATYPE_VALUETYPE:
             {
-                CLR_RT_TypeDef_Index idx = ptr->ObjectCls();
-                _ASSERTE(NANOCLR_INDEX_IS_VALID(idx));
-                PackAndWriteBits(idx);
+                CLR_RT_TypeDef_Index index = ptr->ObjectCls();
+                _ASSERTE(NANOCLR_INDEX_IS_VALID(index));
+                PackAndWriteBits(index);
                 DumpSingleReference(ptr->ObjectLock());
                 DumpListOfReferences(
                     ptr + 1,
@@ -338,10 +333,10 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
             case DATATYPE_SZARRAY:
             {
                 // Special case needed to dump out array data type and levels.
-                CLR_RT_HeapBlock_Array *array = (CLR_RT_HeapBlock_Array *)ptr;
+                auto *array = (CLR_RT_HeapBlock_Array *)ptr;
 
-                PackAndWriteBits(array->ReflectionDataConst().m_data.m_type);
-                PackAndWriteBits(array->ReflectionDataConst().m_levels);
+                PackAndWriteBits(array->ReflectionDataConst().data.type);
+                PackAndWriteBits(array->ReflectionDataConst().levels);
 
                 if (array->m_fReference)
                 {
@@ -352,38 +347,38 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
 
             case DATATYPE_ASSEMBLY:
             {
-                CLR_RT_Assembly *assembly = (CLR_RT_Assembly *)ptr;
-                DumpSingleReference(assembly->m_pFile);
+                auto *assembly = (CLR_RT_Assembly *)ptr;
+                DumpSingleReference(assembly->file);
 #if !defined(NANOCLR_APPDOMAINS)
-                DumpListOfReferences(assembly->m_pStaticFields, assembly->m_iStaticFields);
+                DumpListOfReferences(assembly->staticFields, assembly->staticFieldsCount);
 #endif
                 break;
             }
 
             case DATATYPE_WEAKCLASS:
             {
-                CLR_RT_HeapBlock_WeakReference *wr = (CLR_RT_HeapBlock_WeakReference *)ptr;
+                auto *wr = (CLR_RT_HeapBlock_WeakReference *)ptr;
                 DumpSingleReference(wr->m_targetDirect);
                 break;
             }
 
             case DATATYPE_DELEGATE_HEAD:
             {
-                CLR_RT_HeapBlock_Delegate *dlg = (CLR_RT_HeapBlock_Delegate *)ptr;
+                auto *dlg = (CLR_RT_HeapBlock_Delegate *)ptr;
                 DumpSingleReference(&dlg->m_object);
                 break;
             }
 
             case DATATYPE_DELEGATELIST_HEAD:
             {
-                CLR_RT_HeapBlock_Delegate_List *dlgList = (CLR_RT_HeapBlock_Delegate_List *)ptr;
+                auto *dlgList = (CLR_RT_HeapBlock_Delegate_List *)ptr;
                 DumpListOfReferences(dlgList->GetDelegates(), dlgList->m_length);
                 break;
             }
 
             case DATATYPE_THREAD:
             {
-                CLR_RT_Thread *th = (CLR_RT_Thread *)ptr;
+                auto *th = (CLR_RT_Thread *)ptr;
 
                 DumpSingleReference(th->m_dlg);
                 DumpSingleReference(th->m_currentException.Dereference());
@@ -404,16 +399,16 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
 
             case DATATYPE_STACK_FRAME:
             {
-                CLR_RT_StackFrame *stack = (CLR_RT_StackFrame *)ptr;
-                DumpListOfReferences(stack->m_arguments, stack->m_call.m_target->numArgs);
-                DumpListOfReferences(stack->m_locals, stack->m_call.m_target->numLocals);
+                auto *stack = (CLR_RT_StackFrame *)ptr;
+                DumpListOfReferences(stack->m_arguments, stack->m_call.target->argumentsCount);
+                DumpListOfReferences(stack->m_locals, stack->m_call.target->localsCount);
                 DumpListOfReferences(stack->m_evalStack, stack->TopValuePosition());
                 break;
             }
 
             case DATATYPE_OBJECT_TO_EVENT:
             {
-                CLR_RT_ObjectToEvent_Source *otes = (CLR_RT_ObjectToEvent_Source *)ptr;
+                auto *otes = (CLR_RT_ObjectToEvent_Source *)ptr;
                 DumpSingleReference(
                     otes->m_eventPtr); // The managed object should reference this obj, which references the event.
                 break;
@@ -423,7 +418,7 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
             {
                 // Object points to Lock Head, Thread points to Lock Head, Lock Head points to list of lock owners and
                 // requests
-                CLR_RT_HeapBlock_Lock *lock = (CLR_RT_HeapBlock_Lock *)ptr;
+                auto *lock = (CLR_RT_HeapBlock_Lock *)ptr;
                 DumpListOfReferences(lock->m_owners);
                 DumpListOfReferences(lock->m_requests);
                 break;
@@ -431,35 +426,35 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
 
             case DATATYPE_ENDPOINT_HEAD:
             {
-                CLR_RT_HeapBlock_EndPoint *ep = (CLR_RT_HeapBlock_EndPoint *)ptr;
+                auto *ep = (CLR_RT_HeapBlock_EndPoint *)ptr;
                 DumpListOfReferences(ep->m_messages);
                 break;
             }
 
             case DATATYPE_WAIT_FOR_OBJECT_HEAD:
             {
-                CLR_RT_HeapBlock_WaitForObject *wfo = (CLR_RT_HeapBlock_WaitForObject *)ptr;
+                auto *wfo = (CLR_RT_HeapBlock_WaitForObject *)ptr;
                 DumpListOfReferences(wfo->GetWaitForObjects(), wfo->m_cObjects);
                 break;
             }
 
             case DATATYPE_FINALIZER_HEAD:
             {
-                CLR_RT_HeapBlock_Finalizer *f = (CLR_RT_HeapBlock_Finalizer *)ptr;
+                auto *f = (CLR_RT_HeapBlock_Finalizer *)ptr;
                 DumpSingleReference(f->m_object);
                 break;
             }
 
             case DATATYPE_MEMORY_STREAM_HEAD:
             {
-                CLR_RT_HeapBlock_MemoryStream *ms = (CLR_RT_HeapBlock_MemoryStream *)ptr;
+                auto *ms = (CLR_RT_HeapBlock_MemoryStream *)ptr;
                 DumpListOfReferences(ms->m_buffers);
                 break;
             }
 
             case DATATYPE_SERIALIZER_HEAD:
             {
-                CLR_RT_BinaryFormatter *bf = (CLR_RT_BinaryFormatter *)ptr;
+                auto *bf = (CLR_RT_BinaryFormatter *)ptr;
                 DumpSingleReference(bf->m_stream);
                 DumpListOfReferences(bf->m_duplicates);
                 DumpListOfReferences(bf->m_states);
@@ -498,18 +493,15 @@ void CLR_PRF_Profiler::DumpObject(CLR_RT_HeapBlock *ptr)
 CLR_RT_HeapBlock *CLR_PRF_Profiler::FindReferencedObject(CLR_RT_HeapBlock *ref)
 {
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
-
     while (ref)
     {
-        CLR_DataType dt = ref->DataType();
-
+        NanoCLRDataType dt = ref->DataType();
         switch (dt)
         {
             case DATATYPE_BYREF:
             case DATATYPE_OBJECT:
                 ref = ref->Dereference();
                 break;
-
 #if defined(NANOCLR_APPDOMAINS)
             case DATATYPE_TRANSPARENT_PROXY:
                 ref = ref->TransparentProxyDereference();
@@ -524,8 +516,7 @@ CLR_RT_HeapBlock *CLR_PRF_Profiler::FindReferencedObject(CLR_RT_HeapBlock *ref)
                 return ref;
         }
     }
-
-    return NULL;
+    return nullptr;
 }
 
 void CLR_PRF_Profiler::DumpEndOfRefsList()
@@ -537,14 +528,7 @@ void CLR_PRF_Profiler::DumpEndOfRefsList()
 void CLR_PRF_Profiler::DumpPointer(void *ptr)
 {
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
-
-#ifdef _WIN64
-    CLR_UINT64 ptrVAlue = ((CLR_UINT8 *)ptr - s_CLR_RT_Heap.m_location);
-    PackAndWriteBits((CLR_UINT32)(ptrVAlue >> 32));
-    PackAndWriteBits((CLR_UINT32)ptrVAlue);
-#else
-    PackAndWriteBits((CLR_UINT32)((CLR_UINT8 *)ptr - s_CLR_RT_Heap.m_location));
-#endif
+    PackAndWriteBits((CLR_UINT32)((CLR_UINT8 *)ptr - s_CLR_RT_Heap.location));
 }
 
 void CLR_PRF_Profiler::DumpSingleReference(CLR_RT_HeapBlock *ptr)
@@ -584,7 +568,7 @@ void CLR_PRF_Profiler::Timestamp()
 {
     NATIVE_PROFILE_CLR_DIAGNOSTICS();
     // Send Profiling Timestamp
-    CLR_UINT32 time =
+    auto time =
         (CLR_UINT32)((HAL_Time_CurrentTime() + ((CLR_UINT64)((1ull << CLR_PRF_CMDS::Bits::TimestampShift) - 1))) >>
                      CLR_PRF_CMDS::Bits::TimestampShift);
     if (time > m_lastTimestamp)
@@ -740,7 +724,7 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
                 PackAndWriteBits(idx);
 
 #if defined(VIRTUAL_DEVICE)
-                if (g_ProfilerMessageCallback != NULL)
+                if (g_ProfilerMessageCallback != nullptr)
                 {
                     // build type name
                     char fullTypeName[1024] = {0};
@@ -755,7 +739,7 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
                         c_CLR_RT_DataTypeLookup[dt].m_name,
                         fullTypeName,
                         (CLR_UINT64)((CLR_UINT8 *)ptr),
-                        idx.m_data,
+                        idx.data,
                         (dataSize * sizeof(struct CLR_RT_HeapBlock)));
 
                     g_ProfilerMessageCallback(objectCreation.c_str());
@@ -764,7 +748,7 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
                 CLR_Debug::Printf(
                     "\r\n    Profiler info: ! (0x0x%" PRIx64 " | %d) DT: %d %d bytes idx: %08x\r\n",
                     (size_t)((CLR_UINT8 *)ptr),
@@ -788,12 +772,12 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
             else if (dt == DATATYPE_SZARRAY)
             {
                 CLR_RT_HeapBlock_Array *array = (CLR_RT_HeapBlock_Array *)ptr;
-                CLR_RT_TypeDef_Index elementIdx = array->ReflectionDataConst().m_data.m_type;
-                PackAndWriteBits(array->ReflectionDataConst().m_data.m_type);
-                PackAndWriteBits(array->ReflectionDataConst().m_levels);
+                CLR_RT_TypeDef_Index elementIdx = array->ReflectionDataConst().data.type;
+                PackAndWriteBits(array->ReflectionDataConst().data.type);
+                PackAndWriteBits(array->ReflectionDataConst().levels);
 
 #if defined(VIRTUAL_DEVICE)
-                if (g_ProfilerMessageCallback != NULL)
+                if (g_ProfilerMessageCallback != nullptr)
                 {
                     // build type name
                     char fullTypeName[1024] = {0};
@@ -812,7 +796,7 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
                         fullTypeName,
                         (CLR_UINT64)((CLR_UINT8 *)ptr),
                         (dataSize * sizeof(struct CLR_RT_HeapBlock)),
-                        elementIdx.m_data,
+                        elementIdx.data,
                         array->m_numOfElements,
                         levels);
 
@@ -822,7 +806,7 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
                 CLR_Debug::Printf(
                     "\r\n    Profiler info: ! (0x0x%" PRIx64 " | %d) DT: %d [%08x] %d bytes\r\n",
                     (size_t)((CLR_UINT8 *)ptr),
@@ -856,7 +840,7 @@ void CLR_PRF_Profiler::TrackObjectCreation(CLR_RT_HeapBlock *ptr)
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
             else
             {
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
                 CLR_Debug::Printf(
                     "\r\n    Profiler info: ! (0x0x%" PRIx64 " | %d) DT: %d %d bytes\r\n",
                     (size_t)((CLR_UINT8 *)ptr),
@@ -902,12 +886,12 @@ void CLR_PRF_Profiler::TrackObjectDeletion(CLR_RT_HeapBlock *ptr)
             Stream_Send();
 
 #if defined(VIRTUAL_DEVICE)
-            if (g_ProfilerMessageCallback != NULL)
+            if (g_ProfilerMessageCallback != nullptr)
             {
                 if (dt == DATATYPE_SZARRAY)
                 {
                     CLR_RT_HeapBlock_Array *array = (CLR_RT_HeapBlock_Array *)ptr;
-                    CLR_RT_TypeDef_Index elementIdx = array->ReflectionDataConst().m_data.m_type;
+                    CLR_RT_TypeDef_Index elementIdx = array->ReflectionDataConst().data.type;
 
                     // build type name
                     char fullTypeName[1024] = {0};
@@ -926,7 +910,7 @@ void CLR_PRF_Profiler::TrackObjectDeletion(CLR_RT_HeapBlock *ptr)
                         fullTypeName,
                         (CLR_UINT64)((CLR_UINT8 *)ptr),
                         (ptr->DataSize() * sizeof(struct CLR_RT_HeapBlock)),
-                        elementIdx.m_data,
+                        elementIdx.data,
                         array->m_numOfElements,
                         levels);
 
@@ -949,7 +933,7 @@ void CLR_PRF_Profiler::TrackObjectDeletion(CLR_RT_HeapBlock *ptr)
                         c_CLR_RT_DataTypeLookup[dt].m_name,
                         fullTypeName,
                         (CLR_UINT64)((CLR_UINT8 *)ptr),
-                        idx.m_data,
+                        idx.data,
                         (ptr->DataSize() * sizeof(struct CLR_RT_HeapBlock)));
 
                     g_ProfilerMessageCallback(objectDeletion.c_str());
@@ -973,7 +957,7 @@ void CLR_PRF_Profiler::TrackObjectDeletion(CLR_RT_HeapBlock *ptr)
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
         CLR_UINT16 dataSize = ptr->DataSize();
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
         CLR_Debug::Printf(
             "\r\n    Profiler info: * (0x0x%" PRIx64 " | %d) %d bytes\r\n",
             (size_t)((CLR_UINT8 *)ptr),
@@ -1016,19 +1000,19 @@ void CLR_PRF_Profiler::TrackObjectRelocation()
             DumpPointer(relocBlocks[i].m_start);
             DumpPointer(relocBlocks[i].m_end);
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
             PackAndWriteBits((CLR_UINT32)(relocBlocks[i].m_offset >> 32));
 #endif
             PackAndWriteBits((CLR_UINT32)relocBlocks[i].m_offset);
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
             CLR_Debug::Printf(
-                "\r\n    Profiler msg: u 0x%" PRIx64 " 0x%" PRIx64 " %d\r\n",
-                relocBlocks[i].m_start,
-                relocBlocks[i].m_start + relocBlocks[i].m_offset,
-                relocBlocks[i].m_end - relocBlocks[i].m_offset);
+                "\r\n    Profiler msg: u 0x%" PRIxPTR " 0x%" PRIxPTR " 0x%" PRIxPTR "\r\n",
+                (uintptr_t)relocBlocks[i].m_start,
+                (uintptr_t)(relocBlocks[i].m_start + relocBlocks[i].m_offset),
+                (uintptr_t)(relocBlocks[i].m_end - relocBlocks[i].m_offset));
 
 #else
             CLR_Debug::Printf(
@@ -1055,7 +1039,7 @@ void CLR_PRF_Profiler::TrackObjectRelocation(void *previousAddress, void *destin
     {
 
 #if defined(VIRTUAL_DEVICE)
-        if (g_ProfilerMessageCallback != NULL)
+        if (g_ProfilerMessageCallback != nullptr)
         {
             CLR_RT_HeapBlock *ptr = (CLR_RT_HeapBlock *)destinationAddress;
             CLR_UINT8 dt = ptr->DataType();
@@ -1085,7 +1069,7 @@ void CLR_PRF_Profiler::TrackObjectRelocation(void *previousAddress, void *destin
             else if (dt == DATATYPE_SZARRAY)
             {
                 CLR_RT_HeapBlock_Array *array = (CLR_RT_HeapBlock_Array *)ptr;
-                CLR_RT_TypeDef_Index elementIdx = array->ReflectionDataConst().m_data.m_type;
+                CLR_RT_TypeDef_Index elementIdx = array->ReflectionDataConst().data.type;
 
                 // build type name
                 char fullTypeName[1024] = {0};
@@ -1141,7 +1125,7 @@ void CLR_PRF_Profiler::RecordGarbageCollectionBegin()
         Stream_Send();
 
 #if defined(VIRTUAL_DEVICE)
-        if (g_ProfilerMessageCallback != NULL)
+        if (g_ProfilerMessageCallback != nullptr)
         {
             std::string garbageCollection =
                 std::format("GC: Starting run #{}\r\n", g_CLR_RT_GarbageCollector.m_numberOfGarbageCollections);
@@ -1151,11 +1135,11 @@ void CLR_PRF_Profiler::RecordGarbageCollectionBegin()
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
         CLR_Debug::Printf(
-            "\r\n    Profiler msg: b 1 0 0 0x%" PRIx64 " 0x%" PRIx64 " %d 0\r\n",
-            (CLR_UINT32)s_CLR_RT_Heap.m_location,
-            s_CLR_RT_Heap.m_size,
+            "\r\n    Profiler msg: b 1 0 0 0x%" PRIxPTR " 0x%" PRIx64 " %d 0\r\n",
+            (uintptr_t)s_CLR_RT_Heap.m_location,
+            (uint64_t)s_CLR_RT_Heap.m_size,
             g_CLR_RT_GarbageCollector.m_totalBytes);
 
 #else
@@ -1188,7 +1172,7 @@ void CLR_PRF_Profiler::RecordGarbageCollectionEnd()
         Stream_Send();
 
 #if defined(VIRTUAL_DEVICE)
-        if (g_ProfilerMessageCallback != NULL)
+        if (g_ProfilerMessageCallback != nullptr)
         {
             std::string garbageCollection = std::format(
                 "GC: Finished run #{} - {} bytes free\r\n",
@@ -1201,17 +1185,17 @@ void CLR_PRF_Profiler::RecordGarbageCollectionEnd()
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
         NANOCLR_FOREACH_NODE(CLR_RT_HeapCluster, hc, g_CLR_RT_ExecutionEngine.m_heap)
         {
-            CLR_Debug::Printf("\r\n    Profiler msg: v 0x%" PRIx64 " 0\r\n", (CLR_UINT32)hc->m_payloadStart);
+            CLR_Debug::Printf("\r\n    Profiler msg: v 0x%" PRIxPTR " 0\r\n", (uintptr_t)hc->m_payloadStart);
         }
         NANOCLR_FOREACH_NODE_END();
 
         CLR_Debug::Printf(
-            "\r\n    Profiler msg: b 0 0 0 0x%" PRIx64 " 0x%" PRIx64 " %d 0\r\n",
-            (CLR_UINT32)s_CLR_RT_Heap.m_location,
-            s_CLR_RT_Heap.m_size,
+            "\r\n    Profiler msg: b 0 0 0 0x%" PRIxPTR " 0x%" PRIx64 " %d 0\r\n",
+            (uintptr_t)s_CLR_RT_Heap.m_location,
+            (uint64_t)s_CLR_RT_Heap.m_size,
             g_CLR_RT_GarbageCollector.m_totalBytes);
 
 #else
@@ -1250,7 +1234,7 @@ void CLR_PRF_Profiler::RecordHeapCompactionBegin()
         Stream_Send();
 
 #if defined(VIRTUAL_DEVICE)
-        if (g_ProfilerMessageCallback != NULL)
+        if (g_ProfilerMessageCallback != nullptr)
         {
             std::string heapCompaction =
                 std::format("Heap compaction: Starting run #{} \r\n", g_CLR_RT_GarbageCollector.m_numberOfCompactions);
@@ -1261,11 +1245,11 @@ void CLR_PRF_Profiler::RecordHeapCompactionBegin()
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
         CLR_Debug::Printf(
-            "\r\n    Profiler msg: b 1 0 0 0x%" PRIx64 " 0x%" PRIx64 " %d 0\r\n",
-            (CLR_UINT32)s_CLR_RT_Heap.m_location,
-            s_CLR_RT_Heap.m_size,
+            "\r\n    Profiler msg: b 1 0 0 0x%" PRIxPTR " 0x%" PRIx64 " %d 0\r\n",
+            (uintptr_t)s_CLR_RT_Heap.m_location,
+            (uint64_t)s_CLR_RT_Heap.m_size,
             g_CLR_RT_GarbageCollector.m_totalBytes);
 
 #else
@@ -1298,7 +1282,7 @@ void CLR_PRF_Profiler::RecordHeapCompactionEnd()
         Stream_Send();
 
 #if defined(VIRTUAL_DEVICE)
-        if (g_ProfilerMessageCallback != NULL)
+        if (g_ProfilerMessageCallback != nullptr)
         {
             std::string heapCompaction =
                 std::format("Heap compaction: Finished run #{}\r\n", g_CLR_RT_GarbageCollector.m_numberOfCompactions);
@@ -1309,11 +1293,11 @@ void CLR_PRF_Profiler::RecordHeapCompactionEnd()
 
 #ifdef NANOCLR_TRACE_PROFILER_MESSAGES
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
         CLR_Debug::Printf(
-            "\r\n    Profiler msg: b 0 0 0 0x%" PRIx64 " 0x%" PRIx64 " %d 0\r\n",
-            (CLR_UINT32)s_CLR_RT_Heap.m_location,
-            s_CLR_RT_Heap.m_size,
+            "\r\n    Profiler msg: b 0 0 0 0x%" PRIxPTR " 0x%" PRIx64 " %d 0\r\n",
+            (uintptr_t)s_CLR_RT_Heap.m_location,
+            (uint64_t)s_CLR_RT_Heap.m_size,
             g_CLR_RT_GarbageCollector.m_totalBytes);
 
 #else
@@ -1431,7 +1415,7 @@ HRESULT CLR_PRF_Profiler::Stream_Flush()
     const CLR_UINT32 messageType = CLR_DBG_Commands::c_Profiling_Stream;
 
     CLR_UINT8 buffer[2 * sizeof(CLR_UINT16) + CLR_RT_HeapBlock_MemoryStream::Buffer::c_PayloadSize];
-    CLR_DBG_Commands::Profiling_Stream *packet = (CLR_DBG_Commands::Profiling_Stream *)buffer;
+    auto *packet = (CLR_DBG_Commands::Profiling_Stream *)buffer;
 
     NANOCLR_FOREACH_NODE(CLR_RT_HeapBlock_MemoryStream::Buffer, ptr, m_stream->m_buffers)
     {
@@ -1458,7 +1442,7 @@ HRESULT CLR_PRF_Profiler::Stream_Flush()
             }
 
 #if defined(VIRTUAL_DEVICE)
-            if (g_ProfilerDataCallback != NULL)
+            if (g_ProfilerDataCallback != nullptr)
             {
                 g_ProfilerDataCallback(ptr->m_payload, payloadLength);
             }

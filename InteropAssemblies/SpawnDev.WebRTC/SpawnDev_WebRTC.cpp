@@ -34,7 +34,7 @@ static const CLR_RT_MethodHandler method_lookup[] =
 const CLR_RT_NativeAssemblyData g_CLR_AssemblyNative_SpawnDev_WebRTC =
 {
     "SpawnDev.WebRTC",
-    0x6ADDCD4C,
+    0x5A930C5E,
     method_lookup,
     { 1, 0, 0, 0 }
 };

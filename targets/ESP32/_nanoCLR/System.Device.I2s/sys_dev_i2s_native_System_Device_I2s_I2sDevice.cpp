@@ -21,7 +21,8 @@
 #define I2S_RX_FRAME_SIZE_IN_BYTES (8)
 
 typedef Library_sys_dev_i2s_native_System_Device_I2s_I2sConnectionSettings I2sConnectionSettings;
-typedef Library_corlib_native_System_SpanByte SpanByte;
+typedef Library_corlib_native_System_Span_1 Span;
+typedef Library_corlib_native_System_ReadOnlySpan_1 ReadOnlySpan;
 
 static char Esp_I2S_Initialised_Flag[I2S_NUM_MAX] = {
     0,
@@ -191,7 +192,7 @@ HRESULT SetI2sConfig(i2s_port_t bus, CLR_RT_HeapBlock *config)
 
     // Important: this will have to be adjusted for IDF5
     i2s_config_t conf;
-    
+
     int commformat = config[I2sConnectionSettings::FIELD___i2sConnectionFormat].NumericByRef().s4;
     i2s_mode_t mode = (i2s_mode_t)config[I2sConnectionSettings::FIELD___i2sMode].NumericByRef().s4;
     i2s_bits_per_sample_t bits =
@@ -227,7 +228,7 @@ HRESULT SetI2sConfig(i2s_port_t bus, CLR_RT_HeapBlock *config)
     if (Esp_I2S_Initialised_Flag[bus] == 0)
     {
         // Install driver without events
-        esp_err_t res = i2s_driver_install(bus, &conf, 0, NULL);
+        esp_err_t res = i2s_driver_install(bus, &conf, 0, nullptr);
         if (res != ESP_OK)
         {
             NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
@@ -319,7 +320,8 @@ HRESULT SetI2sConfig(i2s_port_t bus, CLR_RT_HeapBlock *config)
 #endif
     }
 
-#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32C5) && !defined(CONFIG_IDF_TARGET_ESP32C6) && !defined(CONFIG_IDF_TARGET_ESP32H2)  
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32C5) &&                                      \
+    !defined(CONFIG_IDF_TARGET_ESP32C6) && !defined(CONFIG_IDF_TARGET_ESP32C61) && !defined(CONFIG_IDF_TARGET_ESP32H2)
 // apply low-level workaround for bug in some ESP-IDF versions that swap
 // the left and right channels
 // https://github.com/espressif/esp-idf/issues/6625
@@ -332,7 +334,8 @@ HRESULT SetI2sConfig(i2s_port_t bus, CLR_RT_HeapBlock *config)
 #endif
 #endif
 
-    pin_config.mck_io_num = I2S_PIN_NO_CHANGE;
+    // Keep MCLK as resolved from the device map at the top of this function.
+    // If not mapped, pin 0 resolves to -1 (I2S_PIN_NO_CHANGE) and MCLK stays disabled.
 
     if (mode == (I2S_MODE_MASTER | I2S_MODE_RX))
     {
@@ -349,22 +352,21 @@ HRESULT SetI2sConfig(i2s_port_t bus, CLR_RT_HeapBlock *config)
     NANOCLR_NOCLEANUP();
 }
 
-HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Read___VOID__SystemSpanByte(CLR_RT_StackFrame &stack)
+HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Read___VOID__SystemSpan_1(CLR_RT_StackFrame &stack)
 {
     NANOCLR_HEADER();
 
     {
         CLR_RT_HeapBlock *pConfig;
 
-        // get a pointer to the managed object instance and check that it's not NULL
+        // get a pointer to the managed object instance and check that it's not nullptr
         CLR_RT_HeapBlock *pThis = stack.This();
         FAULT_ON_NULL(pThis);
 
-        CLR_RT_HeapBlock *readSpanByte = NULL;
-        CLR_RT_HeapBlock_Array *readBuffer = NULL;
-        uint8_t *readData = NULL;
+        CLR_RT_HeapBlock *readSpanByte = nullptr;
+        CLR_RT_HeapBlock_Array *readBuffer = nullptr;
+        uint8_t *readData = nullptr;
         int readSize = 0;
-        int readOffset = 0;
         uint8_t transform_buffer[SIZEOF_TRANSFORM_BUFFER_IN_BYTES];
         uint32_t a_index = 0;
 
@@ -392,23 +394,21 @@ HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Read___VOID__Sys
             NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
         }
 
-        // dereference the SpanByte from the arguments
+        // dereference the Span from the arguments
         readSpanByte = stack.Arg1().Dereference();
-        if (readSpanByte != NULL)
+
+        if (readSpanByte != nullptr)
         {
-            readBuffer = readSpanByte[SpanByte::FIELD___array].DereferenceArray();
+            readBuffer = readSpanByte[Span::FIELD___array].DereferenceArray();
 
-            if (readBuffer != NULL)
+            if (readBuffer != nullptr)
             {
-                // Get the read offset, only the elements defined by the span must be read, not the whole array
-                readOffset = readSpanByte[SpanByte::FIELD___start].NumericByRef().s4;
-
                 // use the span length as read size, only the elements defined by the span must be read
-                readSize = readSpanByte[SpanByte::FIELD___length].NumericByRef().s4;
+                readSize = readSpanByte[Span::FIELD___length].NumericByRef().s4;
 
                 if (readSize > 0)
                 {
-                    readData = (uint8_t *)readBuffer->GetElement(readOffset);
+                    readData = (uint8_t *)readBuffer->GetFirstElement();
 
                     uint32_t num_bytes_needed_from_dma =
                         readSize * (I2S_RX_FRAME_SIZE_IN_BYTES / appbuf_sample_size_in_bytes);
@@ -470,22 +470,22 @@ HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Read___VOID__Sys
     NANOCLR_NOCLEANUP();
 }
 
-HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Write___VOID__SystemSpanByte(CLR_RT_StackFrame &stack)
+HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Write___VOID__SystemReadOnlySpan_1(
+    CLR_RT_StackFrame &stack)
 {
     NANOCLR_HEADER();
 
     {
         CLR_RT_HeapBlock *pConfig;
 
-        // get a pointer to the managed object instance and check that it's not NULL
+        // get a pointer to the managed object instance and check that it's not nullptr
         CLR_RT_HeapBlock *pThis = stack.This();
         FAULT_ON_NULL(pThis);
 
-        CLR_RT_HeapBlock *writeSpanByte = NULL;
-        CLR_RT_HeapBlock_Array *writeBuffer = NULL;
-        uint8_t *writeData = NULL;
+        CLR_RT_HeapBlock *writeReadOnlySpanByte = nullptr;
+        CLR_RT_HeapBlock_Array *writeBuffer = nullptr;
+        uint8_t *writeData = nullptr;
         int writeSize = 0;
-        int writeOffset = 0;
         size_t bytesWritten;
 
         esp_err_t opResult;
@@ -508,24 +508,22 @@ HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::Write___VOID__Sy
             NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
         }
 
-        // dereference the write and read SpanByte from the arguments
-        writeSpanByte = stack.Arg1().Dereference();
-        if (writeSpanByte != NULL)
+        // dereference the write ReadOnlySpan from the arguments
+        writeReadOnlySpanByte = stack.Arg1().Dereference();
+
+        if (writeReadOnlySpanByte != nullptr)
         {
-            writeBuffer = writeSpanByte[SpanByte::FIELD___array].DereferenceArray();
+            writeBuffer = writeReadOnlySpanByte[ReadOnlySpan::FIELD___array].DereferenceArray();
 
-            if (writeBuffer != NULL)
+            if (writeBuffer != nullptr)
             {
-                // Get the write offset, only the elements defined by the span must be written, not the whole array
-                writeOffset = writeSpanByte[SpanByte::FIELD___start].NumericByRef().s4;
-
                 // use the span length as write size, only the elements defined by the span must be written
-                writeSize = writeSpanByte[SpanByte::FIELD___length].NumericByRef().s4;
+                writeSize = writeReadOnlySpanByte[ReadOnlySpan::FIELD___length].NumericByRef().s4;
 
                 if (writeSize > 0)
                 {
                     CLR_RT_ProtectFromGC gcWriteBuffer(*writeBuffer);
-                    writeData = (unsigned char *)writeBuffer->GetElement(writeOffset);
+                    writeData = (unsigned char *)writeBuffer->GetFirstElement();
 
                     if (bitsPerSample == I2S_BITS_PER_SAMPLE_32BIT)
                     {
@@ -553,7 +551,7 @@ HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::NativeInit___VOI
     {
         CLR_RT_HeapBlock *pConfig;
 
-        // get a pointer to the managed object instance and check that it's not NULL
+        // get a pointer to the managed object instance and check that it's not nullptr
         CLR_RT_HeapBlock *pThis = stack.This();
         FAULT_ON_NULL(pThis);
 
@@ -594,7 +592,7 @@ HRESULT Library_sys_dev_i2s_native_System_Device_I2s_I2sDevice::NativeDispose___
 
     {
         CLR_RT_HeapBlock *pConfig;
-        // get a pointer to the managed object instance and check that it's not NULL
+        // get a pointer to the managed object instance and check that it's not nullptr
         CLR_RT_HeapBlock *pThis = stack.This();
         FAULT_ON_NULL(pThis);
 

@@ -9,7 +9,7 @@
 #if defined(HAL_USE_ADC) && (HAL_USE_ADC == TRUE)
 #include <sys_dev_adc_native_target.h>
 
-NF_PAL_ADC_PORT_PIN_CHANNEL *RuntimeAdcPortPinConfig = NULL;
+NF_PAL_ADC_PORT_PIN_CHANNEL *RuntimeAdcPortPinConfig = nullptr;
 uint8_t RuntimeAdcChannelCount = 0;
 
 int8_t GetNextFreeAdcChannel(NF_PAL_ADC_PORT_PIN_CHANNEL *&newChannel);
@@ -57,7 +57,10 @@ HRESULT Library_nf_hardware_stm32_native_nanoFramework_Hardware_Stm32_Configurat
     alternateFunction = (uint8_t)gpioConfiguration[GpioConfiguration::FIELD___alternateFunction].NumericByRef().s4;
 
     // configure the pin
-    palSetPadMode(port, pad, mode | pullUpDown | speed | (PAL_MODE_ALTERNATE(alternateFunction)));
+    palSetPadMode(
+        port,
+        pad,
+        (iomode_t)((uint32_t)mode | (uint32_t)pullUpDown | (uint32_t)speed | PAL_MODE_ALTERNATE(alternateFunction)));
 
     NANOCLR_NOCLEANUP_NOLABEL();
 }
@@ -126,7 +129,7 @@ HRESULT Library_nf_hardware_stm32_native_nanoFramework_Hardware_Stm32_Configurat
     newChannel->pin = pinNumber % 16;
 
     // need to adjust channel index to account for the ones declared in the build
-    newChannelIndex += AdcChannelCount;
+    newChannelIndex += c_AdcChannelCount;
 
     // return the index of the channel
     stack.SetResult_U4(newChannelIndex);
@@ -151,7 +154,7 @@ HRESULT Library_nf_hardware_stm32_native_nanoFramework_Hardware_Stm32_Configurat
     channel = (uint8_t)stack.Arg0().NumericByRef().u4;
 
     // need to adjust channel index to account for the ones declared in the build
-    channel -= AdcChannelCount;
+    channel -= c_AdcChannelCount;
 
     // check if this channel definition is valid
     if (channel >= RuntimeAdcChannelCount)
@@ -178,14 +181,14 @@ HRESULT Library_nf_hardware_stm32_native_nanoFramework_Hardware_Stm32_Configurat
 int8_t GetNextFreeAdcChannel(NF_PAL_ADC_PORT_PIN_CHANNEL *&newChannel)
 {
     int8_t channelIndex = -1;
-    newChannel = NULL;
+    newChannel = nullptr;
 
-    if (RuntimeAdcPortPinConfig == NULL)
+    if (RuntimeAdcPortPinConfig == nullptr)
     {
         RuntimeAdcPortPinConfig = (NF_PAL_ADC_PORT_PIN_CHANNEL *)platform_malloc(sizeof(NF_PAL_ADC_PORT_PIN_CHANNEL));
 
         // sanity check
-        if (RuntimeAdcPortPinConfig != NULL)
+        if (RuntimeAdcPortPinConfig != nullptr)
         {
             // clear memory
             memset(RuntimeAdcPortPinConfig, 0, sizeof(NF_PAL_ADC_PORT_PIN_CHANNEL));
@@ -215,7 +218,7 @@ int8_t GetNextFreeAdcChannel(NF_PAL_ADC_PORT_PIN_CHANNEL *&newChannel)
             (RuntimeAdcChannelCount + 1) * sizeof(NF_PAL_ADC_PORT_PIN_CHANNEL));
 
         // sanity check
-        if (RuntimeAdcPortPinConfig != NULL)
+        if (RuntimeAdcPortPinConfig != nullptr)
         {
             // update the number of channels
             RuntimeAdcChannelCount++;

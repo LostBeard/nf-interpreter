@@ -7,6 +7,8 @@
 #ifndef MCUCONF_H
 #define MCUCONF_H
 
+// clang-format off
+
 /*
  * STM32F0xx drivers configuration.
  * The following settings override the default settings present in
@@ -185,7 +187,8 @@
 #define STM32_SPI_SPI1_TX_DMA_STREAM   STM32_DMA_STREAM_ID(1, 3)
 #define STM32_SPI_SPI2_RX_DMA_STREAM   STM32_DMA_STREAM_ID(1, 4)
 #define STM32_SPI_SPI2_TX_DMA_STREAM   STM32_DMA_STREAM_ID(1, 5)
-#define STM32_SPI_DMA_ERROR_HOOK(spip) osalSysHalt("DMA failure")
+#define SPI_DRIVER_EXT_FIELDS volatile bool dmaError;
+#define STM32_SPI_DMA_ERROR_HOOK(spip) (spip)->dmaError = true
 
 /*
  * ST driver system settings.
@@ -239,3 +242,5 @@
 #include "mcuconf_nf.h"
 
 #endif /* MCUCONF_H */
+
+// clang-format on

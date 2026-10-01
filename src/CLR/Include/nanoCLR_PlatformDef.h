@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) .NET Foundation and Contributors
 // Portions Copyright (c) Microsoft Corporation.  All rights reserved.
 // See LICENSE file in the project root for full license information.
@@ -18,6 +18,13 @@
 #define NANOCLR_VALIDATE_HEAP_4_CompactionPlus      4 // Trace Compaction Plus
 
 #define NANOCLR_MAX_ASSEMBLY_NAME 128
+
+// Defined when pointers are 64 bits wide (Win64, 64-bit POSIX hosts), whatever the OS or compiler.
+// Use this, not _WIN64 or __LP64__, for code whose layout or behaviour depends on the pointer size.
+#include <stdint.h>
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define NANOCLR_64BIT_POINTERS
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FEATURES
@@ -86,8 +93,8 @@
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// ARM & ESP32
-#if defined(PLATFORM_ARM) || defined(PLATFORM_ESP32)
+// ARM, ESP32 & POSIX host
+#if defined(PLATFORM_ARM) || defined(PLATFORM_ESP32) || defined(PLATFORM_POSIX_HOST)
 // #define NANOCLR_STRESS_GC
 // #define NANOCLR_GC_VERBOSE
 // #define NANOCLR_PROFILE_NEW
@@ -109,6 +116,7 @@
 #undef NANOCLR_TRACE_EXCEPTIONS
 #undef NANOCLR_TRACE_ERRORS
 #undef NANOCLR_TRACE_EARLYCOLLECTION
+#undef NANOCLR_TRACE_GENERICS
 #undef NANOCLR_VALIDATE_HEAP
 #undef NANOCLR_FILL_MEMORY_WITH_DIRTY_PATTERN
 #endif
@@ -175,7 +183,7 @@
 #define ULONGLONGCONSTANT(v) (v##UI64)
 #endif
 
-#if defined(PLATFORM_ARM) | defined(PLATFORM_ESP32)
+#if defined(PLATFORM_ARM) || defined(PLATFORM_ESP32) || defined(PLATFORM_POSIX_HOST)
 #define PROHIBIT_ALL_CONSTRUCTORS(cls)                                                                                 \
   private:                                                                                                             \
     cls();                                                                                                             \
@@ -199,6 +207,16 @@
 
 #define LONGLONGCONSTANT(v)  (v##ll)
 #define ULONGLONGCONSTANT(v) (v##ull)
+#endif
+
+// Keeps a function out of line even under LTO. Use it for cold error/recovery paths that would
+// otherwise be inlined into every one of their call sites and bloat the image.
+#if defined(__GNUC__)
+#define NANOCLR_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define NANOCLR_NOINLINE __declspec(noinline)
+#else
+#define NANOCLR_NOINLINE
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

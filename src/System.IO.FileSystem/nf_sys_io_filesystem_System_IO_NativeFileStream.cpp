@@ -6,13 +6,14 @@
 #include "nf_sys_io_filesystem.h"
 #include <nanoCLR_FileStream.h>
 
-HRESULT Library_nf_sys_io_filesystem_System_IO_NativeFileStream::_ctor___VOID__STRING__I4(CLR_RT_StackFrame &stack)
+HRESULT Library_nf_sys_io_filesystem_System_IO_NativeFileStream::_ctor___VOID__STRING__I4__I4(CLR_RT_StackFrame &stack)
 {
     NATIVE_PROFILE_CLR_IO();
     NANOCLR_HEADER();
 
     CLR_RT_HeapBlock_String *hbPath;
     int32_t bufferSize;
+    int32_t access;
 
     CLR_RT_HeapBlock *pThis = stack.This();
     CLR_RT_HeapBlock *pArgs = &(stack.Arg1());
@@ -21,13 +22,21 @@ HRESULT Library_nf_sys_io_filesystem_System_IO_NativeFileStream::_ctor___VOID__S
     FAULT_ON_NULL(hbPath);
 
     bufferSize = pArgs[1].NumericByRef().s4;
+    access = pArgs[2].NumericByRef().s4;
 
     if (bufferSize < 0)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
     }
 
-    NANOCLR_CHECK_HRESULT(CLR_RT_FileStream::CreateInstance(pThis[FIELD___fs], hbPath->StringText(), bufferSize));
+    // access has to be one of the FileAccess values
+    if (access != FileAccess_Read && access != FileAccess_Write && access != FileAccess_ReadWrite)
+    {
+        NANOCLR_SET_AND_LEAVE(CLR_E_INVALID_PARAMETER);
+    }
+
+    NANOCLR_CHECK_HRESULT(
+        CLR_RT_FileStream::CreateInstance(pThis[FIELD___fs], hbPath->StringText(), bufferSize, (uint32_t)access));
 
     NANOCLR_NOCLEANUP();
 }
@@ -193,7 +202,7 @@ HRESULT Library_nf_sys_io_filesystem_System_IO_NativeFileStream::Close___VOID(CL
 
     NANOCLR_CLEANUP();
 
-    pThis[FIELD___fs].SetObjectReference(NULL);
+    pThis[FIELD___fs].SetObjectReference(nullptr);
 
     NANOCLR_CLEANUP_END();
 }
@@ -203,9 +212,9 @@ HRESULT Library_nf_sys_io_filesystem_System_IO_NativeFileStream::ReadWriteHelper
     NATIVE_PROFILE_CLR_IO();
     NANOCLR_HEADER();
 
-    CLR_RT_HeapBlock_Array *bufHB = NULL;
+    CLR_RT_HeapBlock_Array *bufHB = nullptr;
     CLR_RT_FileStream *fs;
-    CLR_RT_HeapBlock *nativeFileStreamHB = NULL;
+    CLR_RT_HeapBlock *nativeFileStreamHB = nullptr;
 
     uint8_t *buffer;
     int32_t bufferLength;
@@ -284,7 +293,7 @@ HRESULT Library_nf_sys_io_filesystem_System_IO_NativeFileStream::ReadWriteHelper
             switch (fs->GetBufferingStrategy())
             {
                 case DIRECT_IO:
-                    fs->AssignStorage(buffer, count, NULL, 0);
+                    fs->AssignStorage(buffer, count, nullptr, 0);
                     bufHB->Pin();
 
                     break;

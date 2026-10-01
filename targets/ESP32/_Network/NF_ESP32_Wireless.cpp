@@ -18,8 +18,8 @@ static wifi_mode_t wifiMode;
 // flag to store if Wi-Fi has been initialized
 static bool IsWifiInitialised = false;
 
-static esp_netif_t *wifiStaNetif = NULL;
-static esp_netif_t *wifiAPNetif = NULL;
+static esp_netif_t *wifiStaNetif = nullptr;
+static esp_netif_t *wifiAPNetif = nullptr;
 
 // flag to signal if connect is to happen
 bool NF_ESP32_IsToConnect = false;
@@ -34,14 +34,14 @@ wifi_mode_t NF_ESP32_CheckExpectedWifiMode()
 {
     wifi_mode_t mode = WIFI_MODE_NULL;
 
-    HAL_Configuration_Wireless80211 *wirelessConfig = NULL;
-    HAL_Configuration_WirelessAP *wirelessAPConfig = NULL;
+    HAL_Configuration_Wireless80211 *wirelessConfig = nullptr;
+    HAL_Configuration_WirelessAP *wirelessAPConfig = nullptr;
 
     HAL_Configuration_NetworkInterface *networkConfig =
         (HAL_Configuration_NetworkInterface *)platform_malloc(sizeof(HAL_Configuration_NetworkInterface));
 
     // check allocation
-    if (networkConfig == NULL)
+    if (networkConfig == nullptr)
     {
         return WIFI_MODE_NULL;
     }
@@ -57,7 +57,7 @@ wifi_mode_t NF_ESP32_CheckExpectedWifiMode()
             {
                 wirelessConfig = ConfigurationManager_GetWirelessConfigurationFromId(networkConfig->SpecificConfigId);
 
-                if (wirelessConfig != NULL)
+                if (wirelessConfig != nullptr)
                 {
                     if (wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_Enable)
                     {
@@ -80,7 +80,7 @@ wifi_mode_t NF_ESP32_CheckExpectedWifiMode()
                 wirelessAPConfig =
                     ConfigurationManager_GetWirelessAPConfigurationFromId(networkConfig->SpecificConfigId);
 
-                if (wirelessAPConfig != NULL)
+                if (wirelessAPConfig != nullptr)
                 {
                     if (wirelessAPConfig->Options & WirelessAPConfiguration_ConfigurationOptions_Enable)
                     {
@@ -122,9 +122,9 @@ void NF_ESP32_DeinitWifi()
     esp_wifi_stop();
 
     esp_netif_destroy_default_wifi(wifiStaNetif);
-    wifiStaNetif = NULL;
+    wifiStaNetif = nullptr;
     esp_netif_destroy_default_wifi(wifiAPNetif);
-    wifiAPNetif = NULL;
+    wifiAPNetif = nullptr;
 
     esp_wifi_deinit();
 }
@@ -178,7 +178,10 @@ esp_err_t NF_ESP32_InitaliseWifi()
         esp_hosted_init();
 #endif
         // create Wi-Fi STA (ignoring return)
-        wifiStaNetif = esp_netif_create_default_wifi_sta();
+        if (wifiStaNetif == NULL)
+        {
+            wifiStaNetif = esp_netif_create_default_wifi_sta();
+        }
 
         // Set static address if configured
         // ignore any errors
@@ -195,7 +198,10 @@ esp_err_t NF_ESP32_InitaliseWifi()
         if (expectedWifiMode & WIFI_MODE_AP)
         {
             // create AP (ignoring return)
-            wifiAPNetif = esp_netif_create_default_wifi_ap();
+            if (wifiAPNetif == NULL)
+            {
+                wifiAPNetif = esp_netif_create_default_wifi_ap();
+            }
 
             // Remove DHCP server flag as not configured in sdkconfig, DHCP server done in managed code
             // Otherwise startup hangs
@@ -253,7 +259,7 @@ esp_err_t NF_ESP32_InitaliseWifi()
         {
             HAL_Configuration_NetworkInterface *networkConfig =
                 (HAL_Configuration_NetworkInterface *)platform_malloc(sizeof(HAL_Configuration_NetworkInterface));
-            if (networkConfig == NULL)
+            if (networkConfig == nullptr)
             {
                 return ESP_FAIL;
             }
@@ -348,7 +354,7 @@ int NF_ESP32_Wireless_Open(HAL_Configuration_NetworkInterface *config)
     HAL_Configuration_Wireless80211 *wirelessConfig =
         ConfigurationManager_GetWirelessConfigurationFromId(config->SpecificConfigId);
 
-    if (wirelessConfig == NULL)
+    if (wirelessConfig == nullptr)
     {
         return SOCK_SOCKET_ERROR;
     }

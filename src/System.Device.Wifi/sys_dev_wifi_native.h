@@ -43,6 +43,16 @@ typedef enum __nfpack WifiReconnectionKind
     WifiReconnectionKind_Manual = 1,
 } WifiReconnectionKind;
 
+struct Library_sys_dev_wifi_native_System_Device_Wifi_WifiAvailableNetwork
+{
+    static const int FIELD___bsid = 1;
+    static const int FIELD___ssid = 2;
+    static const int FIELD___rssi = 3;
+    static const int FIELD___networkKind = 4;
+
+    //--//
+};
+
 struct Library_sys_dev_wifi_native_System_Device_Wifi_WifiConnectionResult
 {
     static const int FIELD___ConnectionStatus = 1;
@@ -80,7 +90,7 @@ struct Library_sys_dev_wifi_native_System_Device_Wifi_WifiNetworkReport
     //--//
 };
 
-struct Library_sys_dev_Wifi_native_nanoFramework_Networking_WifiNetworkHelper
+struct Library_sys_dev_wifi_native_nanoFramework_Networking_WifiNetworkHelper
 {
     static const int FIELD_STATIC___ipAddressAvailable = 1;
     static const int FIELD_STATIC___networkReady = 2;
@@ -94,6 +104,18 @@ struct Library_sys_dev_Wifi_native_nanoFramework_Networking_WifiNetworkHelper
     static const int FIELD_STATIC___helperException = 10;
     static const int FIELD_STATIC___workingNetworkInterface = 11;
     static const int FIELD_STATIC___helperInstanciated = 12;
+
+    //--//
+};
+
+struct Library_sys_dev_wifi_native_nanoFramework_Networking_WifiNetworkHelper__O
+{
+    // renamed compiler-generated field '<0>__WorkingThread'
+    static const int FIELD_STATIC____WorkingThread = 13;
+    // renamed compiler-generated field '<1>__AddressChangedCallback'
+    static const int FIELD_STATIC____AddressChangedCallback = 14;
+    // renamed compiler-generated field '<2>__WifiAvailableNetworksChanged'
+    static const int FIELD_STATIC____WifiAvailableNetworksChanged = 15;
 
     //--//
 };

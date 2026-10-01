@@ -229,9 +229,9 @@ typedef int SOCK_SOCKET;
 
 #define SOCK__IOW(x, y, t) (SOCK_IOC_IN | (((long)sizeof(t) & SOCK_IOCPARM_MASK) << 16) | ((x) << 8) | (y))
 //
-#define SOCK_FIONREAD SOCK__IOR('f', 127, u_long) /* get # bytes to read */
-#define SOCK_FIONBIO  SOCK__IOW('f', 126, u_long) /* set/clear non-blocking i/o */
-#define SOCK_FIOASYNC SOCK__IOW('f', 125, u_long) /* set/clear async i/o */
+#define SOCK_FIONREAD SOCK__IOR('f', 127, uint32_t) /* get # bytes to read */
+#define SOCK_FIONBIO  SOCK__IOW('f', 126, uint32_t) /* set/clear non-blocking i/o */
+#define SOCK_FIOASYNC SOCK__IOW('f', 125, uint32_t) /* set/clear async i/o */
 //
 
 #define SOCK_FD_SETSIZE 256
@@ -269,7 +269,7 @@ typedef struct GNU_PACKED SOCK_in_addr
             u_short s_w1, s_w2;
         } S_un_w;
 
-        u_long S_addr;
+        uint32_t S_addr;
     } S_un;
 } SOCK_in_addr;
 
@@ -680,9 +680,27 @@ typedef void (*SSL_DATE_TIME_FUNC)(DATE_TIME_INFO *pdt);
 
 #define SSL_RESULT__WOULD_BLOCK -2
 
+enum SslError
+{
+    SslError_None = 0,
+    SslError_NoFreeContext = 1,
+    SslError_OutOfMemory = 2,
+    SslError_DrbgSeedFailed = 3,
+    SslError_ConfigDefaultsFailed = 4,
+    SslError_UnsupportedProtocolVersion = 5,
+    SslError_PrivateKeyParseFailed = 6,
+    SslError_CertificateParseFailed = 7,
+    SslError_OwnCertConfigFailed = 8,
+    SslError_SetupFailed = 9,
+    SslError_HandshakeBadContext = 10,
+    SslError_HandshakeSetHostname = 11,
+    SslError_HandshakeCertVerifyFailed = 12,
+    SslError_HandshakeFailed = 13,
+};
+
 bool SSL_Initialize();
 bool SSL_Uninitialize();
-bool SSL_ServerInit(
+SslError SSL_ServerInit(
     int sslMode,
     int sslVerify,
     const char *certificate,
@@ -694,7 +712,7 @@ bool SSL_ServerInit(
     int &sslContextHandle,
     bool useDeviceCertificate);
 
-bool SSL_ClientInit(
+SslError SSL_ClientInit(
     int sslMode,
     int sslVerify,
     const char *certificate,
@@ -708,8 +726,8 @@ bool SSL_ClientInit(
 
 bool SSL_AddCertificateAuthority(int sslContextHandle, const char *certificate, int certLength);
 bool SSL_ExitContext(int sslContextHandle);
-int SSL_Accept(int socket, int sslContextHandle);
-int SSL_Connect(int socket, const char *szTargetHost, int sslContextHandle);
+SslError SSL_Accept(int socket, int sslContextHandle, int *mbedtlsCode);
+SslError SSL_Connect(int socket, const char *szTargetHost, int sslContextHandle, int *mbedtlsCode);
 int SSL_Write(int socket, const char *Data, size_t size);
 int SSL_Read(int socket, char *Data, size_t size);
 int SSL_CloseSocket(int socket);

@@ -1,4 +1,4 @@
-﻿//
+//
 // Copyright (c) .NET Foundation and Contributors
 // Portions Copyright (c) Microsoft Corporation.  All rights reserved.
 // See LICENSE file in the project root for full license information.
@@ -10,7 +10,8 @@
 HRESULT CLR_RT_HeapBlock_Array::CreateInstance(
     CLR_RT_HeapBlock &reference,
     CLR_UINT32 length,
-    const CLR_RT_ReflectionDef_Index &reflex)
+    const CLR_RT_ReflectionDef_Index &reflex,
+    CLR_UINT32 extraBytes)
 {
     NATIVE_PROFILE_CLR_CORE();
     NANOCLR_HEADER();
@@ -19,23 +20,23 @@ HRESULT CLR_RT_HeapBlock_Array::CreateInstance(
     CLR_RT_TypeDef_Index cls;
     CLR_RT_TypeDef_Instance inst{};
 
-    reference.SetObjectReference(NULL);
+    reference.SetObjectReference(nullptr);
 
     if ((CLR_INT32)length < 0)
         NANOCLR_SET_AND_LEAVE(CLR_E_OUT_OF_RANGE);
 
-    if (reflex.m_kind != REFLECTION_TYPE)
+    if (reflex.kind != REFLECTION_TYPE && reflex.kind != REFLECTION_STORAGE_PTR)
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_WRONG_TYPE);
     }
 
-    if (reflex.m_levels == 1)
+    if (reflex.levels == 1)
     {
-        cls = reflex.m_data.m_type;
+        cls = reflex.data.type;
     }
     else
     {
-        cls = g_CLR_RT_WellKnownTypes.m_Array;
+        cls = g_CLR_RT_WellKnownTypes.Array;
     }
 
     if (inst.InitializeFromIndex(cls) == false)
@@ -44,7 +45,7 @@ HRESULT CLR_RT_HeapBlock_Array::CreateInstance(
     }
     else
     {
-        CLR_DataType dt = (CLR_DataType)inst.m_target->dataType;
+        NanoCLRDataType dt = (NanoCLRDataType)inst.target->dataType;
         const CLR_RT_DataTypeLookup &dtl = c_CLR_RT_DataTypeLookup[dt];
 
         if (dtl.m_sizeInBytes == CLR_RT_DataTypeLookup::c_NA)
@@ -52,12 +53,18 @@ HRESULT CLR_RT_HeapBlock_Array::CreateInstance(
             NANOCLR_SET_AND_LEAVE(CLR_E_WRONG_TYPE);
         }
 
-        pArray = (CLR_RT_HeapBlock_Array *)g_CLR_RT_ExecutionEngine.ExtractHeapBlocksForArray(inst, length, reflex);
+        pArray = (CLR_RT_HeapBlock_Array *)
+                     g_CLR_RT_ExecutionEngine.ExtractHeapBlocksForArray(inst, length, reflex, extraBytes);
         CHECK_ALLOCATION(pArray);
 
         reference.SetObjectReference(pArray);
 
-        NANOCLR_SET_AND_LEAVE(pArray->ClearElements(0, length));
+        // only clear elements if they belong to the array
+        // don't do it when they are stored elsewhere
+        if (reflex.kind != REFLECTION_STORAGE_PTR)
+        {
+            NANOCLR_SET_AND_LEAVE(pArray->ClearElements(0, length));
+        }
     }
 
     NANOCLR_NOCLEANUP();
@@ -73,11 +80,45 @@ HRESULT CLR_RT_HeapBlock_Array::CreateInstance(
 
     CLR_RT_ReflectionDef_Index reflex;
 
-    reflex.m_kind = REFLECTION_TYPE;
-    reflex.m_levels = 1;
-    reflex.m_data.m_type = cls;
+    reflex.kind = REFLECTION_TYPE;
+    reflex.levels = 1;
+    reflex.data.type = cls;
 
     NANOCLR_SET_AND_LEAVE(CreateInstance(reference, length, reflex));
+
+    NANOCLR_NOCLEANUP();
+}
+
+HRESULT CLR_RT_HeapBlock_Array::CreateInstanceWithStorage(
+    CLR_RT_HeapBlock &reference,
+    CLR_UINT32 length,
+    const uintptr_t storageAddress,
+    const CLR_RT_TypeDef_Index &cls,
+    const CLR_RT_HeapBlock *owner)
+{
+    NATIVE_PROFILE_CLR_CORE();
+    NANOCLR_HEADER();
+
+    CLR_RT_HeapBlock_Array *thisArray;
+    CLR_RT_ReflectionDef_Index reflex;
+
+    reflex.kind = REFLECTION_STORAGE_PTR;
+    reflex.levels = 1;
+    reflex.data.type = cls;
+
+    // ZERO length: elements live in someone else's storage. extraBytes reserves the StorageOwner() slot.
+    NANOCLR_CHECK_HRESULT(CreateInstance(reference, 0, reflex, sizeof(CLR_RT_HeapBlock)));
+
+    thisArray = reference.DereferenceArray();
+
+    // set the storage
+    thisArray->m_StoragePointer = storageAddress;
+
+    // adjust the number of elements with the provided length
+    thisArray->m_numOfElements = length;
+
+    // see CLAUDE.md §16
+    thisArray->StorageOwner()->SetObjectReference(owner);
 
     NANOCLR_NOCLEANUP();
 }
@@ -86,31 +127,50 @@ HRESULT CLR_RT_HeapBlock_Array::CreateInstance(
     CLR_RT_HeapBlock &reference,
     CLR_UINT32 length,
     CLR_RT_Assembly *assm,
-    CLR_UINT32 tk)
+    CLR_UINT32 tk,
+    const CLR_RT_MethodDef_Instance *caller,
+    const CLR_RT_TypeSpec_Index *contextTypeSpec)
 {
     NATIVE_PROFILE_CLR_CORE();
     NANOCLR_HEADER();
 
     CLR_RT_HeapBlock ref;
     CLR_RT_TypeDef_Instance cls{};
-    CLR_RT_TypeSpec_Instance def{};
+    CLR_RT_TypeSpec_Instance tsInst{};
 
     memset(&ref, 0, sizeof(struct CLR_RT_HeapBlock));
 
-    if (cls.ResolveToken(tk, assm))
+    if (cls.ResolveToken(tk, assm, caller, contextTypeSpec))
     {
-        ref.SetReflection(cls);
+        NANOCLR_CHECK_HRESULT(ref.SetReflection(cls));
     }
-    else if (def.ResolveToken(tk, assm))
+    else if (tsInst.ResolveToken(tk, assm))
     {
-        NANOCLR_CHECK_HRESULT(ref.SetReflection(def));
+        // Create a fake reflection index to pass the element type and levels.
+        CLR_RT_ReflectionDef_Index reflex{};
+        reflex.kind = REFLECTION_TYPE;
+        reflex.levels = tsInst.levels;
+
+        // For generic instantiation TypeSpecs (e.g. Pair<TKey,TValue>), genericTypeDef holds
+        // the open generic typedef (e.g. Pair<,>).  cachedElementType is only set for
+        // non-generic TypeSpecs resolved via VAR/MVAR, so prefer genericTypeDef when valid.
+        if (NANOCLR_INDEX_IS_VALID(tsInst.genericTypeDef))
+        {
+            reflex.data.type = tsInst.genericTypeDef;
+        }
+        else
+        {
+            reflex.data.type = tsInst.cachedElementType;
+        }
+
+        NANOCLR_CHECK_HRESULT(ref.SetReflection(reflex));
     }
     else
     {
         NANOCLR_SET_AND_LEAVE(CLR_E_WRONG_TYPE);
     }
 
-    ref.ReflectionData().m_levels++;
+    ref.ReflectionData().levels++;
 
     NANOCLR_SET_AND_LEAVE(CreateInstance(reference, length, ref.ReflectionData()));
 
@@ -125,12 +185,18 @@ HRESULT CLR_RT_HeapBlock_Array::ClearElements(int index, int length)
     const CLR_RT_ReflectionDef_Index &reflex = ReflectionDataConst();
     CLR_UINT8 *data = GetElement(index);
 
+    // sanity check
+    if (IsStoragePointer())
+    {
+        NANOCLR_SET_AND_LEAVE(CLR_E_WRONG_TYPE);
+    }
+
     CLR_RT_Memory::ZeroFill(data, length * m_sizeOfElement);
 
     if (m_fReference)
     {
-        CLR_DataType dt = (CLR_DataType)m_typeOfElement;
-        bool fAllocate = (reflex.m_levels == 1 && dt == DATATYPE_VALUETYPE);
+        NanoCLRDataType dt = (NanoCLRDataType)m_typeOfElement;
+        bool fAllocate = (reflex.levels == 1 && dt == DATATYPE_VALUETYPE);
         CLR_RT_HeapBlock *ptr = (CLR_RT_HeapBlock *)data;
 
         switch (dt)
@@ -152,7 +218,7 @@ HRESULT CLR_RT_HeapBlock_Array::ClearElements(int index, int length)
 
             if (fAllocate)
             {
-                NANOCLR_CHECK_HRESULT(g_CLR_RT_ExecutionEngine.NewObjectFromIndex(*ptr, reflex.m_data.m_type));
+                NANOCLR_CHECK_HRESULT(g_CLR_RT_ExecutionEngine.NewObjectFromIndex(*ptr, reflex.data.type));
             }
 
             ptr++;
@@ -166,11 +232,23 @@ HRESULT CLR_RT_HeapBlock_Array::ClearElements(int index, int length)
 void CLR_RT_HeapBlock_Array::Relocate()
 {
     NATIVE_PROFILE_CLR_CORE();
-    //
-    // If the array is full of reference types, relocate each of them.
-    //
-    if (m_fReference)
+
+    if (IsStoragePointer())
     {
+        // no owner => unmanaged-memory Span, nothing to relocate. See CLAUDE.md §16.
+        CLR_RT_HeapBlock *owner = StorageOwner();
+
+        if (owner->Dereference() != nullptr)
+        {
+            CLR_RT_GarbageCollector::Heap_Relocate(owner, 1);
+            CLR_RT_GarbageCollector::Heap_Relocate((void **)&m_StoragePointer);
+        }
+    }
+    else if (m_fReference)
+    {
+        //
+        // If the array is full of reference types, relocate each of them.
+        //
         CLR_RT_GarbageCollector::Heap_Relocate((CLR_RT_HeapBlock *)GetFirstElement(), m_numOfElements);
     }
 }
@@ -338,6 +416,9 @@ HRESULT CLR_RT_HeapBlock_Array::Copy(
 
             if (!arraySrc->m_fReference)
             {
+                // check that array is not stored in stack
+                ASSERT(arraySrc->m_StoragePointer == 0);
+
                 memmove(dataDst, dataSrc, length * sizeElem);
             }
             else
@@ -375,7 +456,7 @@ HRESULT CLR_RT_HeapBlock_Array::Copy(
 
             for (int i = 0; i < length; i++, ptrSrc++, ptrDst++)
             {
-                if (ptrSrc->DataType() == DATATYPE_OBJECT && ptrSrc->Dereference() == NULL)
+                if (ptrSrc->DataType() == DATATYPE_OBJECT && ptrSrc->Dereference() == nullptr)
                 {
                     ;
                 }
@@ -399,7 +480,7 @@ HRESULT CLR_RT_HeapBlock_Array::Copy(
             CLR_RT_HeapBlock ref;
             CLR_RT_HeapBlock elem;
 
-            elem.SetObjectReference(NULL);
+            elem.SetObjectReference(nullptr);
             CLR_RT_ProtectFromGC gc(elem);
 
             NANOCLR_CHECK_HRESULT(descDst.InitializeFromObject(*arrayDst));
@@ -410,7 +491,7 @@ HRESULT CLR_RT_HeapBlock_Array::Copy(
                 ref.InitializeArrayReferenceDirect(*arraySrc, indexSrc++);
                 NANOCLR_CHECK_HRESULT(elem.LoadFromReference(ref));
 
-                if (elem.DataType() == DATATYPE_OBJECT && elem.Dereference() == NULL)
+                if (elem.DataType() == DATATYPE_OBJECT && elem.Dereference() == nullptr)
                 {
                     ;
                 }

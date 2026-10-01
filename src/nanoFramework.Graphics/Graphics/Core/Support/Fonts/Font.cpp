@@ -304,7 +304,7 @@ void CLR_GFX_Font::DrawChar(
     }
     else
     {
-        param.antiAlias = NULL;
+        param.antiAlias = nullptr;
         config = PAL_GFX_Bitmap::c_SetPixelsConfig_Clip;
     }
     bitmap->SetPixelsHelper(rect, config, &DrawCharHelper, &param);
@@ -321,7 +321,7 @@ void CLR_GFX_Font::CountCharactersInWidth(
 {
     CLR_RT_UnicodeHelper uh;
     CLR_UINT16 buf[3];
-    LPCSTR breakPoint = NULL;
+    LPCSTR breakPoint = nullptr;
     CLR_UINT16 lastChar = 0;
     int breakWidth = 0;
     int breakIndex = 0;
@@ -475,7 +475,7 @@ void CLR_GFX_Font::GetCharInfo(CLR_UINT16 c, CLR_GFX_FontCharacterInfo &chrEx)
             }
             else
             {
-                chrEx.antiAlias = NULL;
+                chrEx.antiAlias = nullptr;
                 chrEx.iAntiAlias = 1;
             }
         }

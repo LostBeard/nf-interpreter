@@ -7,7 +7,7 @@
 #ifndef NANOHAL_V2_H
 #define NANOHAL_V2_H
 
-#ifndef VIRTUAL_DEVICE
+#if !defined(VIRTUAL_DEVICE) && !defined(PLATFORM_POSIX_HOST)
 
 // need to include stdlib.h **BEFORE** redefining malloc/free/realloc otherwise bad things happen
 #include <stdlib.h>
@@ -77,11 +77,9 @@ typedef enum SLEEP_LEVEL
 #define SYSTEM_EVENT_FLAG_RADIO          0x00010000
 #define SYSTEM_EVENT_FLAG_BLUETOOTH      0x00020000
 
-// #define SYSTEM_EVENT_FLAG_SPI                       0x00008000
-// #define SYSTEM_EVENT_FLAG_OEM_RESERVED_1            0x00020000
-// #define SYSTEM_EVENT_FLAG_OEM_RESERVED_2            0x00040000
-// #define SYSTEM_EVENT_FLAG_UNUSED_0x00080000         0x00080000
-// #define SYSTEM_EVENT_FLAG_UNUSED_0x00100000         0x00100000
+#define SYSTEM_EVENT_FLAG_RMT_RX 0x00080000
+
+#define SYSTEM_EVENT_FLAG_ESPNOW 0x00100000
 
 // #define SYSTEM_EVENT_FLAG_UNUSED_0x00200000         0x00200000
 // #define SYSTEM_EVENT_FLAG_UNUSED_0x00400000         0x00400000
@@ -115,6 +113,7 @@ typedef enum SLEEP_LEVEL
 #define EVENT_TOUCH                 120
 #define EVENT_GESTURE               130
 #define EVENT_OPENTHREAD            140
+#define EVENT_ESPNOW                150
 
 #define PAL_EVENT_TOUCH 0x1
 #define PAL_EVENT_KEY   0x2
@@ -304,7 +303,7 @@ extern "C"
 }
 #endif
 
-#if defined(PLATFORM_ARM) || defined(PLATFORM_ESP32)
+#if defined(PLATFORM_ARM) || defined(PLATFORM_ESP32) || defined(PLATFORM_POSIX_HOST)
 #if !defined(BUILD_RTM)
 #define ASSERT(i)                                                                                                      \
     {                                                                                                                  \

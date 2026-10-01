@@ -205,7 +205,7 @@ bool DisplayDriver::ChangeOrientation(DisplayOrientation orientation)
         case DisplayOrientation::DisplayOrientation_Portrait:
             Attributes.Height = Attributes.LongerSide;
             Attributes.Width = Attributes.ShorterSide;
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait != NULL)
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait != nullptr)
             {
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait);
             }
@@ -213,7 +213,7 @@ bool DisplayDriver::ChangeOrientation(DisplayOrientation orientation)
         case DisplayOrientation::DisplayOrientation_Portrait180:
             Attributes.Height = Attributes.LongerSide;
             Attributes.Width = Attributes.ShorterSide;
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait180 != NULL)
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait180 != nullptr)
             {
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationPortrait180);
             }
@@ -221,16 +221,15 @@ bool DisplayDriver::ChangeOrientation(DisplayOrientation orientation)
         case DisplayOrientation::DisplayOrientation_Landscape:
             Attributes.Height = Attributes.ShorterSide;
             Attributes.Width = Attributes.LongerSide;
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape != NULL)
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape != nullptr)
             {
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape);
             }
             return true;
         case DisplayOrientation::DisplayOrientation_Landscape180:
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180 != NULL)
             Attributes.Height = Attributes.ShorterSide;
             Attributes.Width = Attributes.LongerSide;
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180 != NULL)
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180 != nullptr)
             {
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.OrientationLandscape180);
             }
@@ -252,14 +251,14 @@ void DisplayDriver::PowerSave(PowerSaveState powerState)
         default:
             // Illegal fall through to Power on
         case PowerSaveState::NORMAL:
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.PowerModeNormal != NULL)
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.PowerModeNormal != nullptr)
             {
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.PowerModeNormal);
             }
 
             break;
         case PowerSaveState::SLEEP:
-            if (g_DisplayInterfaceConfig.GenericDriverCommands.PowerModeSleep != NULL)
+            if (g_DisplayInterfaceConfig.GenericDriverCommands.PowerModeSleep != nullptr)
             {
                 ProcessCommand(g_DisplayInterfaceConfig.GenericDriverCommands.PowerModeSleep);
             }
@@ -271,7 +270,7 @@ void DisplayDriver::PowerSave(PowerSaveState powerState)
 void DisplayDriver::Clear()
 {
     // Default behavior
-    if (g_DisplayInterfaceConfig.GenericDriverCommands.Clear == NULL)
+    if (g_DisplayInterfaceConfig.GenericDriverCommands.Clear == nullptr)
     {
         SetWindow(0, 0, Attributes.Width - 1, Attributes.Height - 1);
 

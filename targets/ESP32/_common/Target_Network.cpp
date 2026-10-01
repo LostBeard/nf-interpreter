@@ -5,7 +5,6 @@
 //
 
 #include "NF_ESP32_Network.h"
-#include <esp32_ethernet_options.h>
 #include <esp_wifi_types.h>
 //
 // Works with the Target_NetworkConfig to map the Network_Interface_XXXXX calls to the correct driver
@@ -55,7 +54,7 @@ int Network_Interface_Open(int index)
             return NF_ESP32_WirelessAP_Open(&networkConfiguration);
 #endif
 
-#ifdef ESP32_ETHERNET_SUPPORT
+#if defined(CONFIG_ESP32_ETHERNET_SUPPORT) && CONFIG_ESP32_ETHERNET_SUPPORT == TRUE
         // Ethernet
         case NetworkInterfaceType_Ethernet:
             return NF_ESP32_Ethernet_Open(&networkConfiguration);
@@ -100,7 +99,7 @@ bool Network_Interface_Close(int index)
             return NF_ESP32_WirelessAP_Close();
 #endif
 
-#ifdef ESP32_ETHERNET_SUPPORT
+#if defined(CONFIG_ESP32_ETHERNET_SUPPORT) && CONFIG_ESP32_ETHERNET_SUPPORT == TRUE
         // Ethernet
         case NetworkInterfaceType_Ethernet:
             return NF_ESP32_Ethernet_Close();
@@ -189,11 +188,11 @@ bool GetWirelessConfig(int index, HAL_Configuration_Wireless80211 **wirelessConf
 int Network_Interface_Start_Connect(int index, const char *ssid, const char *passphase, int options)
 {
     // need to free memory, if allocated in successful GetWirelessConfig
-    HAL_Configuration_Wireless80211 *wirelessConfig = NULL;
+    HAL_Configuration_Wireless80211 *wirelessConfig = nullptr;
 
     if (GetWirelessConfig(index, &wirelessConfig) == false)
     {
-        if (wirelessConfig != NULL)
+        if (wirelessConfig != nullptr)
         {
             platform_free(wirelessConfig);
         }

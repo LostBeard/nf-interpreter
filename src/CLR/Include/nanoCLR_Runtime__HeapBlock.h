@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) .NET Foundation and Contributors
 // Portions Copyright (c) Microsoft Corporation.  All rights reserved.
 // See LICENSE file in the project root for full license information.
@@ -47,7 +47,7 @@
 
 #define CLR_RT_HEAPBLOCK_RELOCATE(ptr)                                                                                 \
     {                                                                                                                  \
-        CLR_DataType dt = ptr->DataType();                                                                             \
+        NanoCLRDataType dt = ptr->DataType();                                                                          \
                                                                                                                        \
         if (dt > DATATYPE_LAST_NONPOINTER && dt < DATATYPE_FIRST_INVALID)                                              \
         {                                                                                                              \
@@ -64,17 +64,25 @@
 //
 // This is used in memory move operations.
 //
-#ifdef _WIN64
+#if defined(_MSC_VER) && defined(NANOCLR_64BIT_POINTERS)
+// 64-bit MSVC, packed to 4 bytes: CLR_RT_HeapBlock = 4 (m_id) + 16 (m_data with 2x 8-byte ptrs) = 20 bytes.
 struct CLR_RT_HeapBlock_Raw
 {
     CLR_UINT32 data[5];
+};
+#elif defined(NANOCLR_64BIT_POINTERS)
+// other 64-bit hosts (Linux/macOS x86-64/arm64), not packed:
+// CLR_RT_HeapBlock = 4 (m_id) + 4 (align pad) + 16 (m_data with 2x 8-byte ptrs) = 24 bytes.
+struct CLR_RT_HeapBlock_Raw
+{
+    CLR_UINT32 data[6];
 };
 #else
 struct CLR_RT_HeapBlock_Raw
 {
     CLR_UINT32 data[3];
 };
-#endif // _WIN64
+#endif
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -114,7 +122,7 @@ struct CLR_RT_HeapBlock
     static const CLR_UINT32 HB_Event = 0x04;
     static const CLR_UINT32 HB_Pinned = 0x08;
     static const CLR_UINT32 HB_Boxed = 0x10;
-    static const CLR_UINT32 HB_Unused20 = 0x20;
+    static const CLR_UINT32 HB_GenericInstance = 0x20;
     // If more bits are needed, HB_Signaled and HB_SignalAutoReset can be freed for use with a little work.
     // It is not necessary that any heapblock can be waited upon.  Currently, only Threads (Thread.Join),
     // ManualResetEvent, and AutoResetEvent are waitable objects.
@@ -142,7 +150,7 @@ struct CLR_RT_HeapBlock
     union CLR_RT_HeapBlock_Id {
         struct Type
         {
-            CLR_UINT8 dataType; // CLR_DataType
+            CLR_UINT8 dataType; // NanoCLRDataType
             CLR_UINT8 flags;    // HB_*
             CLR_UINT16 size;
         } type;
@@ -458,23 +466,23 @@ struct CLR_RT_HeapBlock
 
                 R8 &operator+=(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
-                    value += (double)num;         // uses conversion and then built-in type double
-                    *this = value;                // uses assignment operator (operator=)
+                    auto value = (double)*this; // uses conversion
+                    value += (double)num;       // uses conversion and then built-in type double
+                    *this = value;              // uses assignment operator (operator=)
                     return *this;
                 }
 
                 R8 &operator-=(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
-                    value -= (double)num;         // uses conversion and then built-in type double
-                    *this = value;                // uses assignment operator (operator=)
+                    auto value = (double)*this; // uses conversion
+                    value -= (double)num;       // uses conversion and then built-in type double
+                    *this = value;              // uses assignment operator (operator=)
                     return *this;
                 }
 
                 R8 operator*(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
+                    auto value = (double)*this; // uses conversion
                     R8 ret_value;
                     value *= (double)num; // uses conversion and then built-in type __int64
                     ret_value = value;    // uses assignment operator (operator=)
@@ -483,7 +491,7 @@ struct CLR_RT_HeapBlock
 
                 R8 operator/(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
+                    auto value = (double)*this; // uses conversion
                     R8 ret_value;
                     value /= (double)num; // uses conversion and then built-in type __int64
                     ret_value = value;    // uses assignment operator (operator=)
@@ -492,25 +500,25 @@ struct CLR_RT_HeapBlock
 
                 bool operator<(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
+                    auto value = (double)*this; // uses conversion
                     return (value < (double)num);
                 }
 
                 bool operator>(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
+                    auto value = (double)*this; // uses conversion
                     return (value > (double)num);
                 }
 
                 bool operator==(const R8 &num)
                 {
-                    double value = (double)*this; // uses conversion
+                    auto value = (double)*this; // uses conversion
                     return (value == (double)num);
                 }
 
                 bool operator==(const double num)
                 {
-                    double value = (double)*this; // uses conversion
+                    auto value = (double)*this; // uses conversion
                     return (value == num);
                 }
 
@@ -742,6 +750,13 @@ struct CLR_RT_HeapBlock
 
         CLR_RT_ReflectionDef_Index reflection;
 
+        // same word unless 64-bit pointers align to 8 (not packed like MSVC): see CLAUDE.md "Object header aliasing"
+#if !defined(NANOCLR_64BIT_POINTERS) || defined(_MSC_VER)
+        CT_ASSERT_UNIQUE_NAME(
+            offsetof(ObjectHeader, lock) == offsetof(CLR_RT_ReflectionDef_Index, data),
+            objectHeaderLockAliasesReflectionData)
+#endif
+
         //--//
 
         struct BinaryBlob
@@ -749,6 +764,15 @@ struct CLR_RT_HeapBlock
             CLR_RT_MarkingHandler m_mark;
             CLR_RT_RelocationHandler m_relocate;
         } binaryBlob;
+
+        //--//
+
+        struct UnmanagedPointer
+        {
+            uintptr_t ptr;
+        } unmanagedPointer;
+
+        //--//
 
     } m_data;
 
@@ -759,10 +783,11 @@ struct CLR_RT_HeapBlock
 
     //--//
 
-    CLR_DataType DataType() const
+    NanoCLRDataType DataType() const
     {
-        return (CLR_DataType)m_id.type.dataType;
+        return (NanoCLRDataType)m_id.type.dataType;
     }
+
     CLR_UINT8 DataFlags() const
     {
         return m_id.type.flags;
@@ -790,8 +815,8 @@ struct CLR_RT_HeapBlock
 
     void ClearData()
     {
-        m_data.nodeLink.nextBlock = NULL;
-        m_data.nodeLink.prevBlock = NULL;
+        m_data.nodeLink.nextBlock = nullptr;
+        m_data.nodeLink.prevBlock = nullptr;
     }
 
     void SetFlags(CLR_UINT8 flags)
@@ -809,7 +834,7 @@ struct CLR_RT_HeapBlock
 
     //--//
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
 #define SENTINEL_NODE_APPENDED  0xABABABABABABABAB
 #define SENTINEL_NODE_EXTRACTED 0xADADADADADADADAD
 #define SENTINEL_CLEAR_BLOCK    0xCBCBCBCBCBCBCBCB
@@ -825,7 +850,7 @@ struct CLR_RT_HeapBlock
 
 #if defined(NANOCLR_FILL_MEMORY_WITH_DIRTY_PATTERN)
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
     void Debug_ClearBlock(CLR_UINT64 data);
 #else
     void Debug_ClearBlock(CLR_UINT32 data);
@@ -835,7 +860,7 @@ struct CLR_RT_HeapBlock
 
 #else
 
-#ifdef _WIN64
+#if defined(NANOCLR_64BIT_POINTERS)
     void Debug_ClearBlock(CLR_UINT64 data)
 #else
     void Debug_ClearBlock(CLR_UINT32 data)
@@ -1024,12 +1049,17 @@ struct CLR_RT_HeapBlock
     {
         CLR_RT_HeapBlock *obj;
 
+        // If already a ref type, dereference it
+        if (dst.DataType() == DATATYPE_BYREF)
+        {
+            obj = dst.Dereference();
+        }
         //
         // ValueTypes are implemented as pointers to objects,
         // so getting a reference to a ValueType has to be treated like getting a reference to object, not to its
         // holder!
         //
-        if (dst.IsAValueType())
+        else if (dst.IsAValueType())
         {
             obj = dst.Dereference();
         }
@@ -1042,7 +1072,7 @@ struct CLR_RT_HeapBlock
         m_data.objectReference.ptr = obj;
     }
 
-    bool IsAReferenceOfThisType(CLR_DataType dataType) const
+    bool IsAReferenceOfThisType(NanoCLRDataType dataType) const
     {
         if (DataType() == DATATYPE_OBJECT)
         {
@@ -1062,10 +1092,25 @@ struct CLR_RT_HeapBlock
             CLR_RT_HeapBlock *obj = Dereference();
 
             if (obj && obj->DataType() == DATATYPE_VALUETYPE && obj->IsBoxed() == false)
+            {
                 return true;
+            }
         }
 
         return false;
+    }
+
+    bool IsAGenericInstance() const
+    {
+        return ((DataFlags() & CLR_RT_HeapBlock::HB_GenericInstance) == CLR_RT_HeapBlock::HB_GenericInstance);
+    }
+
+    // m_data.objectHeader.lock aliases m_data.reflection.data.typeSpec: see CLAUDE.md "Object header aliasing"
+    bool HasObjectLockSlot() const
+    {
+        const NanoCLRDataType dt = DataType();
+
+        return (dt == DATATYPE_CLASS || dt == DATATYPE_VALUETYPE) && !IsAGenericInstance();
     }
 
     bool SameHeader(const CLR_RT_HeapBlock &right) const
@@ -1075,9 +1120,22 @@ struct CLR_RT_HeapBlock
 
     //--//
 
+    void SetUnmanagedPointer(const uintptr_t ptr)
+    {
+        m_id.raw = CLR_RT_HEAPBLOCK_RAW_ID(DATATYPE_PTR, 0, 1);
+        m_data.unmanagedPointer.ptr = ptr;
+    }
+
+    uintptr_t UnmanagedPointer() const
+    {
+        return (DataType() == DATATYPE_PTR) ? m_data.unmanagedPointer.ptr : 0;
+    }
+
+    //--//
+
     CLR_RT_HeapBlock_Array *RecoverArrayHeader() const
     {
-        return (DataType() == DATATYPE_ARRAY_BYREF) ? m_data.arrayReference.array : NULL;
+        return (DataType() == DATATYPE_ARRAY_BYREF) ? m_data.arrayReference.array : nullptr;
     }
 
     //--//
@@ -1094,7 +1152,7 @@ struct CLR_RT_HeapBlock
             }
         }
 
-        return NULL;
+        return nullptr;
     }
 
     //--//
@@ -1145,11 +1203,14 @@ struct CLR_RT_HeapBlock
     }
     CLR_RT_HeapBlock_Lock *ObjectLock() const
     {
-        return m_data.objectHeader.lock;
+        return HasObjectLockSlot() ? m_data.objectHeader.lock : nullptr;
     }
     void SetObjectLock(CLR_RT_HeapBlock_Lock *lock)
     {
-        m_data.objectHeader.lock = lock;
+        if (HasObjectLockSlot())
+        {
+            m_data.objectHeader.lock = lock;
+        }
     }
 
     HRESULT SetObjectCls(const CLR_RT_TypeDef_Index &cls);
@@ -1164,6 +1225,15 @@ struct CLR_RT_HeapBlock
     {
         return m_data.reflection;
     }
+
+    //--//
+
+    const CLR_RT_TypeSpec_Index &ObjectGenericType() const
+    {
+        return m_data.reflection.data.typeSpec;
+    }
+
+    HRESULT SetGenericInstanceType(const CLR_RT_TypeSpec_Index &genericType);
 
     //--//
 
@@ -1252,8 +1322,8 @@ struct CLR_RT_HeapBlock
 
         value.Debug_CheckPointer();
 
-        CLR_RT_HeapBlock_Raw *src = (CLR_RT_HeapBlock_Raw *)this;
-        CLR_RT_HeapBlock_Raw *dst = (CLR_RT_HeapBlock_Raw *)&value;
+        auto *src = (CLR_RT_HeapBlock_Raw *)this;
+        auto *dst = (CLR_RT_HeapBlock_Raw *)&value;
 
         *src = *dst;
     }
@@ -1264,8 +1334,10 @@ struct CLR_RT_HeapBlock
 
         this->m_data = value.m_data;
 
-        if (this->DataType() > DATATYPE_LAST_PRIMITIVE_TO_PRESERVE)
-            this->m_id = value.m_id;
+        if (DataType() > DATATYPE_LAST_PRIMITIVE_TO_PRESERVE)
+        {
+            this->m_id = value.m_id; // FIX: handle generic type
+        }
     }
 
     void AssignPreserveTypeCheckPinned(const CLR_RT_HeapBlock &value)
@@ -1288,11 +1360,34 @@ struct CLR_RT_HeapBlock
     // Since it is rare case, the code is not inlined to save code size.
     void AssignAndPinReferencedObject(const CLR_RT_HeapBlock &value);
 
-    HRESULT Convert(CLR_DataType et, bool fOverflow, bool fUnsigned)
+    HRESULT Convert(NanoCLRDataType et, bool fOverflow, bool fUnsigned)
     {
         //
         // For V1, we don't throw on overflow.
         //
+        // For conv.r.un, the source must be treated as unsigned regardless of its
+        // declared DataType (which is always a signed type on the eval stack).
+        // Remap to the unsigned equivalent so Convert_Internal selects scaleIn = -1.
+        if (fUnsigned)
+        {
+            switch (DataType())
+            {
+                case DATATYPE_I1:
+                    ChangeDataType(DATATYPE_U1);
+                    break;
+                case DATATYPE_I2:
+                    ChangeDataType(DATATYPE_U2);
+                    break;
+                case DATATYPE_I4:
+                    ChangeDataType(DATATYPE_U4);
+                    break;
+                case DATATYPE_I8:
+                    ChangeDataType(DATATYPE_U8);
+                    break;
+                default:
+                    break;
+            }
+        }
         return Convert_Internal(et);
     }
 
@@ -1313,7 +1408,7 @@ struct CLR_RT_HeapBlock
 
     HRESULT SetReflection(const CLR_RT_ReflectionDef_Index &reflex);
     HRESULT SetReflection(const CLR_RT_Assembly_Index &assm);
-    HRESULT SetReflection(const CLR_RT_TypeSpec_Index &sig);
+    HRESULT SetReflection(const CLR_RT_TypeSpec_Index &typeSpec);
     HRESULT SetReflection(const CLR_RT_TypeDef_Index &cls);
     HRESULT SetReflection(const CLR_RT_FieldDef_Index &fd);
     HRESULT SetReflection(const CLR_RT_MethodDef_Index &md);
@@ -1325,6 +1420,7 @@ struct CLR_RT_HeapBlock
     HRESULT LoadFromReference(CLR_RT_HeapBlock &ref);
     HRESULT StoreToReference(CLR_RT_HeapBlock &ref, int size);
     HRESULT Reassign(const CLR_RT_HeapBlock &value);
+    HRESULT Reassign(CLR_RT_HeapBlock &rhs, const CLR_RT_TypeDef_Instance &expectedType);
     HRESULT PerformBoxingIfNeeded();
     HRESULT PerformBoxing(const CLR_RT_TypeDef_Instance &cls);
     HRESULT PerformUnboxing(const CLR_RT_TypeDef_Instance &cls);
@@ -1336,12 +1432,13 @@ struct CLR_RT_HeapBlock
     bool IsZero() const;
     void Promote();
 
+    static bool TypeDescriptorsMatch(const CLR_RT_TypeDescriptor &exp, const CLR_RT_TypeDescriptor &act);
     static CLR_UINT32 GetHashCode(CLR_RT_HeapBlock *ptr, bool fRecurse, CLR_UINT32 crc);
     static bool ObjectsEqual(const CLR_RT_HeapBlock &left, const CLR_RT_HeapBlock &right, bool fSameReference);
 
     static CLR_INT32 Compare_Values(const CLR_RT_HeapBlock &left, const CLR_RT_HeapBlock &right, bool fSigned);
 
-    HRESULT Convert_Internal(CLR_DataType et);
+    HRESULT Convert_Internal(NanoCLRDataType et);
     HRESULT NumericAdd(const CLR_RT_HeapBlock &right);
     HRESULT NumericSub(const CLR_RT_HeapBlock &right);
     HRESULT NumericMul(const CLR_RT_HeapBlock &right);
@@ -1384,7 +1481,7 @@ struct CLR_RT_HeapBlock
         cls *ptr;                                                                                                      \
         cls *ptr##Next;                                                                                                \
                                                                                                                        \
-        for (ptr = (cls *)(lst).FirstNode(); (ptr##Next = (cls *)ptr->Next()) != NULL; ptr = ptr##Next)                \
+        for (ptr = (cls *)(lst).FirstNode(); (ptr##Next = (cls *)ptr->Next()) != nullptr; ptr = ptr##Next)             \
         {                                                                                                              \
             NANOCLR_FAULT_ON_EARLY_COLLECTION(ptr##Next);
 
@@ -1392,7 +1489,7 @@ struct CLR_RT_HeapBlock
     {                                                                                                                  \
         cls *ptr##Next;                                                                                                \
                                                                                                                        \
-        for (ptr = (cls *)(lst).FirstNode(); (ptr##Next = (cls *)ptr->Next()) != NULL; ptr = ptr##Next)                \
+        for (ptr = (cls *)(lst).FirstNode(); (ptr##Next = (cls *)ptr->Next()) != nullptr; ptr = ptr##Next)             \
         {                                                                                                              \
             NANOCLR_FAULT_ON_EARLY_COLLECTION(ptr##Next);
 
@@ -1401,7 +1498,7 @@ struct CLR_RT_HeapBlock
         cls *ptr;                                                                                                      \
         cls *ptr##Next;                                                                                                \
                                                                                                                        \
-        for (ptr = (cls *)(startNode); (ptr##Next = (cls *)ptr->Next()) != NULL; ptr = ptr##Next)                      \
+        for (ptr = (cls *)(startNode); (ptr##Next = (cls *)ptr->Next()) != nullptr; ptr = ptr##Next)                   \
         {                                                                                                              \
             NANOCLR_FAULT_ON_EARLY_COLLECTION(ptr##Next);
 
@@ -1422,7 +1519,7 @@ struct CLR_RT_HeapBlock
         cls *ptr;                                                                                                      \
         cls *ptr##Prev;                                                                                                \
                                                                                                                        \
-        for (ptr = (cls *)(lst).LastNode(); (ptr##Prev = (cls *)ptr->Prev()) != NULL; ptr = ptr##Prev)                 \
+        for (ptr = (cls *)(lst).LastNode(); (ptr##Prev = (cls *)ptr->Prev()) != nullptr; ptr = ptr##Prev)              \
         {                                                                                                              \
             NANOCLR_FAULT_ON_EARLY_COLLECTION(ptr##Prev);
 
@@ -1430,7 +1527,7 @@ struct CLR_RT_HeapBlock
     {                                                                                                                  \
         cls *ptr##Prev;                                                                                                \
                                                                                                                        \
-        for (ptr = (cls *)(lst).LastNode(); (ptr##Prev = (cls *)ptr->Prev()) != NULL; ptr = ptr##Prev)                 \
+        for (ptr = (cls *)(lst).LastNode(); (ptr##Prev = (cls *)ptr->Prev()) != nullptr; ptr = ptr##Prev)              \
         {                                                                                                              \
             NANOCLR_FAULT_ON_EARLY_COLLECTION(ptr##Prev);
 
@@ -1439,7 +1536,7 @@ struct CLR_RT_HeapBlock
         cls *ptr;                                                                                                      \
         cls *ptr##Prev;                                                                                                \
                                                                                                                        \
-        for (ptr = (cls *)(startNode); (ptr##Prev = (cls *)ptr->Prev()) != NULL; ptr = ptr##Prev)                      \
+        for (ptr = (cls *)(startNode); (ptr##Prev = (cls *)ptr->Prev()) != nullptr; ptr = ptr##Prev)                   \
         {                                                                                                              \
             NANOCLR_FAULT_ON_EARLY_COLLECTION(ptr##Prev);
 
@@ -1493,8 +1590,8 @@ struct CLR_RT_HeapBlock_Node : public CLR_RT_HeapBlock
     //
     // So we'll have to use the explicit check...
     //
-    // bool IsValidForward () const { return Next() != NULL; }
-    // bool IsValidBackward() const { return Prev() != NULL; }
+    // bool IsValidForward () const { return Next() != nullptr; }
+    // bool IsValidBackward() const { return Prev() != nullptr; }
 
     //--//
 
@@ -1544,8 +1641,8 @@ struct CLR_RT_HeapBlock_Node : public CLR_RT_HeapBlock
         if (next)
             next->m_data.nodeLink.prevBlock = prev;
 
-        m_data.nodeLink.prevBlock = NULL;
-        m_data.nodeLink.nextBlock = NULL;
+        m_data.nodeLink.prevBlock = nullptr;
+        m_data.nodeLink.nextBlock = nullptr;
     }
 
     //--//
@@ -1597,18 +1694,18 @@ struct CLR_RT_DblLinkedList
     CLR_RT_HeapBlock_Node *FirstValidNode() const
     {
         CLR_RT_HeapBlock_Node *res = m_first;
-        return res->Next() ? res : NULL;
+        return res->Next() ? res : nullptr;
     }
     CLR_RT_HeapBlock_Node *LastValidNode() const
     {
         CLR_RT_HeapBlock_Node *res = m_last;
-        return res->Prev() ? res : NULL;
+        return res->Prev() ? res : nullptr;
     }
 
     // Check that node pNode is not "dummy" tail or head node.
     static bool IsValidListNode(CLR_RT_HeapBlock_Node *pNode)
     {
-        return pNode->m_data.nodeLink.nextBlock != NULL && pNode->m_data.nodeLink.prevBlock != NULL;
+        return pNode->m_data.nodeLink.nextBlock != nullptr && pNode->m_data.nodeLink.prevBlock != nullptr;
     }
 
     CLR_RT_HeapBlock_Node *Head() const
@@ -1796,19 +1893,40 @@ struct CLR_RT_HeapBlock_Array : public CLR_RT_HeapBlock
     CLR_UINT8 m_sizeOfElement;
     CLR_UINT8 m_fReference;
     CLR_UINT8 m_pad;
+    uintptr_t m_StoragePointer;
 
     //--//
 
     static HRESULT CreateInstance(
         CLR_RT_HeapBlock &reference,
         CLR_UINT32 length,
-        const CLR_RT_ReflectionDef_Index &reflex);
+        const CLR_RT_ReflectionDef_Index &reflex,
+        CLR_UINT32 extraBytes = 0);
     static HRESULT CreateInstance(CLR_RT_HeapBlock &reference, CLR_UINT32 length, const CLR_RT_TypeDef_Index &cls);
-    static HRESULT CreateInstance(CLR_RT_HeapBlock &reference, CLR_UINT32 length, CLR_RT_Assembly *assm, CLR_UINT32 tk);
+    static HRESULT CreateInstance(
+        CLR_RT_HeapBlock &reference,
+        CLR_UINT32 length,
+        CLR_RT_Assembly *assm,
+        CLR_UINT32 tk,
+        const CLR_RT_MethodDef_Instance *caller,
+        const CLR_RT_TypeSpec_Index *contextTypeSpec);
+    static HRESULT CreateInstanceWithStorage(
+        CLR_RT_HeapBlock &reference,
+        CLR_UINT32 length,
+        const uintptr_t storageAddress,
+        const CLR_RT_TypeDef_Index &cls,
+        const CLR_RT_HeapBlock *owner);
 
     CLR_UINT8 *GetFirstElement()
     {
-        return ((CLR_UINT8 *)&this[1]);
+        if (ReflectionData().kind == REFLECTION_STORAGE_PTR)
+        {
+            return ((CLR_UINT8 *)this->m_StoragePointer);
+        }
+        else
+        {
+            return ((CLR_UINT8 *)&this[1]);
+        }
     }
 
     CLR_UINT8 *GetElement(CLR_UINT32 index)
@@ -1818,12 +1936,30 @@ struct CLR_RT_HeapBlock_Array : public CLR_RT_HeapBlock
 
     CLR_UINT16 *GetFirstElementUInt16()
     {
-        return ((CLR_UINT16 *)&this[1]);
+        if (ReflectionData().kind == REFLECTION_STORAGE_PTR)
+        {
+            return ((CLR_UINT16 *)this->m_StoragePointer);
+        }
+        else
+        {
+            return ((CLR_UINT16 *)&this[1]);
+        }
     }
 
     CLR_UINT16 *GetElementUInt16(CLR_UINT32 index)
     {
         return GetFirstElementUInt16() + m_sizeOfElement * index;
+    }
+
+    bool IsStoragePointer()
+    {
+        return (ReflectionData().kind == REFLECTION_STORAGE_PTR);
+    }
+
+    // Valid only when IsStoragePointer() is true. See CLAUDE.md §16.
+    CLR_RT_HeapBlock *StorageOwner()
+    {
+        return (CLR_RT_HeapBlock *)&this[1];
     }
 
     HRESULT ClearElements(int index, int length);
@@ -1863,6 +1999,14 @@ struct CLR_RT_HeapBlock_Delegate : public CLR_RT_HeapBlock_Node // OBJECT HEAP -
 #if defined(NANOCLR_APPDOMAINS)
     CLR_RT_AppDomain *m_appDomain;
 #endif
+
+    // Optional TypeSpec index for resolving type generic parameter (VARs like !0)
+    // (data == 0 means not set)
+    CLR_RT_TypeSpec_Index m_genericTypeSpec;
+
+    // Optional MethodSpec index for resolving method generic parameters (MVAR like !!0)
+    // (data == 0 means not set)
+    CLR_RT_MethodSpec_Index m_genericMethodSpec;
 
     //--//
 

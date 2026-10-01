@@ -11,6 +11,8 @@
 #include <xdc/runtime/Error.h>
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Task.h>
+#include <ti/drivers/ADC.h>
+
 // clang-format off
 #include DeviceFamily_constructPath(inc/hw_prcm.h)
 #include DeviceFamily_constructPath(driverlib/sys_ctrl.h)
@@ -18,6 +20,7 @@
 
 // need this until fix in TI SDK is implemented
 extern void PIN_init_nano();
+extern void ConfigUART();
 
 //////////////////////////////
 
@@ -107,4 +110,15 @@ int main(void)
     BIOS_start();
 
     return (0);
+}
+
+///////////////////////////////////////////////////////////////////////
+// need this dummy implementation here (started with SDK 4.20.01.04) //
+///////////////////////////////////////////////////////////////////////
+void __attribute__((naked)) _exit(int code)
+{
+    (void)code;
+
+    for (;;)
+        ;
 }

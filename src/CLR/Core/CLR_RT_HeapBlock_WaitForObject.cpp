@@ -94,7 +94,7 @@ bool CLR_RT_HeapBlock_WaitForObject::TryWaitForSignal(
             for (CLR_UINT32 i = 0; i < cObjects; i++)
             {
                 obj = blk->Dereference();
-                _ASSERTE(obj != NULL);
+                _ASSERTE(obj != nullptr);
 
                 if (phase == 0)
                 {
@@ -124,7 +124,7 @@ bool CLR_RT_HeapBlock_WaitForObject::TryWaitForSignal(
         for (CLR_UINT32 i = 0; i < cObjects; i++)
         {
             obj = blk->Dereference();
-            _ASSERTE(obj != NULL);
+            _ASSERTE(obj != nullptr);
 
             if (obj->IsFlagSet(CLR_RT_HeapBlock::HB_Signaled))
             {

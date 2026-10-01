@@ -24,7 +24,7 @@ static const CLR_RT_MethodHandler method_lookup[] =
 const CLR_RT_NativeAssemblyData g_CLR_AssemblyNative_SpawnDev_Crypto =
 {
     "SpawnDev.Crypto",
-    0xEB181134,
+    0x7352CAFA,
     method_lookup,
     { 1, 0, 0, 0 }
 };

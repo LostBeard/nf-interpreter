@@ -550,6 +550,11 @@ struct CLR_DBG_Commands
 
     //--//
 
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // !!! KEEP IN SYNC WITH nanoFramework.Tools.Debugger.WireProtocol.Commands.Debugging_Value (in managed code) !!! //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     struct Debugging_Value
     {
         // this is a CLR_RT_HeapBlock *
@@ -576,6 +581,12 @@ struct CLR_DBG_Commands
         // For DATATYPE_VALUETYPE or DATATYPE_CLASSTYPE
         //
         CLR_RT_TypeDef_Index    m_td;
+
+        //
+        // For a generic instance: DATATYPE_CLASS or DATATYPE_VALUETYPE with HB_GenericInstance
+        // set in m_flags. Zero otherwise.
+        //
+        CLR_RT_TypeSpec_Index    m_ts;
 
         //
         // For DATATYPE_SZARRAY
@@ -618,7 +629,9 @@ struct CLR_DBG_Commands
 
     struct Debugging_Value_GetField
     {
-        CLR_RT_HeapBlock *    m_heapblock;
+        // this is a heap block handle (see HandleToHeapBlock in Debugger.cpp)
+        // has to be stored as CLR_UINT32 because CLR_RT_HeapBlock * has different size on 32 and 64 bit platforms
+        CLR_UINT32            m_heapblock;
         CLR_UINT32            m_offset;
         CLR_RT_FieldDef_Index m_fd;
 
@@ -630,8 +643,10 @@ struct CLR_DBG_Commands
 
     struct Debugging_Value_GetArray
     {
-        CLR_RT_HeapBlock *m_heapblock;
-        CLR_UINT32        m_index;
+        // this is a heap block handle (see HandleToHeapBlock in Debugger.cpp)
+        // has to be stored as CLR_UINT32 because CLR_RT_HeapBlock * has different size on 32 and 64 bit platforms
+        CLR_UINT32 m_heapblock;
+        CLR_UINT32 m_index;
 
 
         //
@@ -641,7 +656,9 @@ struct CLR_DBG_Commands
 
     struct Debugging_Value_GetBlock
     {
-        CLR_RT_HeapBlock *m_heapblock;
+        // this is a heap block handle (see HandleToHeapBlock in Debugger.cpp)
+        // has to be stored as CLR_UINT32 because CLR_RT_HeapBlock * has different size on 32 and 64 bit platforms
+        CLR_UINT32 m_heapblock;
 
 
         //
@@ -651,7 +668,7 @@ struct CLR_DBG_Commands
 
     struct Debugging_Value_GetScratchPad
     {
-        CLR_UINT32 m_idx;
+        CLR_UINT32 m_index;
 
 
         //
@@ -661,16 +678,20 @@ struct CLR_DBG_Commands
 
     struct Debugging_Value_SetBlock
     {
-        CLR_RT_HeapBlock *m_heapblock;
-        CLR_UINT32        m_dt;                // CLR_RT_HeapBlock::DataType ()
-        CLR_UINT8         m_builtinValue[8];
+        // this is a heap block handle (see HandleToHeapBlock in Debugger.cpp)
+        // has to be stored as CLR_UINT32 because CLR_RT_HeapBlock * has different size on 32 and 64 bit platforms
+        CLR_UINT32 m_heapblock;
+        CLR_UINT32 m_dt;                // CLR_RT_HeapBlock::DataType ()
+        CLR_UINT8  m_builtinValue[8];
     };
 
     struct Debugging_Value_SetArray
     {
-        CLR_RT_HeapBlock_Array *m_heapblock;
-        CLR_UINT32              m_index;
-        CLR_UINT8               m_builtinValue[8];
+        // this is a heap block handle to a CLR_RT_HeapBlock_Array (see HandleToHeapBlock in Debugger.cpp)
+        // has to be stored as CLR_UINT32 because CLR_RT_HeapBlock_Array * has different size on 32 and 64 bit platforms
+        CLR_UINT32 m_heapblock;
+        CLR_UINT32 m_index;
+        CLR_UINT8  m_builtinValue[8];
     };
 
     //--//
@@ -709,8 +730,10 @@ struct CLR_DBG_Commands
 
     struct Debugging_Value_Assign
     {
-        CLR_RT_HeapBlock *m_heapblockSrc;
-        CLR_RT_HeapBlock *m_heapblockDst;
+        // these are heap block handles (see HandleToHeapBlock in Debugger.cpp)
+        // have to be stored as CLR_UINT32 because CLR_RT_HeapBlock * has different size on 32 and 64 bit platforms
+        CLR_UINT32 m_heapblockSrc;
+        CLR_UINT32 m_heapblockDst;
 
         //
         // The reply is an array of Debugging_Value
@@ -749,7 +772,7 @@ struct CLR_DBG_Commands
 
     struct Debugging_Resolve_Assembly
     {
-         CLR_RT_Assembly_Index m_idx;
+         CLR_RT_Assembly_Index m_index;
 
          struct Reply
          {
@@ -795,7 +818,9 @@ struct CLR_DBG_Commands
     struct Debugging_Resolve_VirtualMethod
     {
         CLR_RT_MethodDef_Index m_md;
-        CLR_RT_HeapBlock      *m_obj;
+        // this is a heap block handle (see HandleToHeapBlock in Debugger.cpp)
+        // has to be stored as CLR_UINT32 because CLR_RT_HeapBlock * has different size on 32 and 64 bit platforms
+        CLR_UINT32 m_obj;
 
         struct Reply
         {
@@ -904,12 +929,12 @@ private:
     HRESULT            CreateListOfThreads(                 CLR_DBG_Commands::Debugging_Thread_List ::Reply*& cmdReply, int& totLen );
     HRESULT            CreateListOfCalls  ( CLR_INT32 pid, CLR_DBG_Commands::Debugging_Thread_Stack::Reply*& cmdReply, int& totLen );
 
-    CLR_RT_Assembly   *IsGoodAssembly( CLR_IDX                       idxAssm                                  );
+    CLR_RT_Assembly   *IsGoodAssembly( CLR_INDEX                       indexAssm                                  );
     bool               CheckTypeDef  ( const CLR_RT_TypeDef_Index&   td     , CLR_RT_TypeDef_Instance&   inst );
     bool               CheckFieldDef ( const CLR_RT_FieldDef_Index&  fd     , CLR_RT_FieldDef_Instance&  inst );
     bool               CheckMethodDef( const CLR_RT_MethodDef_Index& md     , CLR_RT_MethodDef_Instance& inst );
 
-    bool               GetValue( WP_Message *msg, CLR_RT_HeapBlock *ptr, CLR_RT_HeapBlock *reference, CLR_RT_TypeDef_Instance *pTD );
+    bool               GetValue( WP_Message *msg, CLR_RT_HeapBlock *ptr, CLR_RT_HeapBlock *reference, CLR_RT_TypeDef_Instance *pTD);
 
     bool AllocateAndQueueMessage( CLR_UINT32 cmd, unsigned int length, unsigned char *data, CLR_RT_HeapBlock_EndPoint::Port port, CLR_RT_HeapBlock_EndPoint::Address addr, CLR_UINT32 found );
 
@@ -998,8 +1023,8 @@ public:
 #if defined(NANOCLR_ENABLE_SOURCELEVELDEBUGGING)
     static bool Debugging_Info_SetJMC                   ( WP_Message *msg );
     
-    bool Debugging_Info_SetJMC_Type                     ( const CLR_RT_TypeDef_Index&   idx, bool fJMC );
-    bool Debugging_Info_SetJMC_Method                   ( const CLR_RT_MethodDef_Index& idx, bool fJMC );
+    bool Debugging_Info_SetJMC_Type                     ( const CLR_RT_TypeDef_Index&   index, bool fJMC );
+    bool Debugging_Info_SetJMC_Method                   ( const CLR_RT_MethodDef_Index& index, bool fJMC );
 #endif //#if defined(NANOCLR_ENABLE_SOURCELEVELDEBUGGING)
 
     static bool Profiling_Command                       ( WP_Message *msg );

@@ -9,6 +9,8 @@
 
 // clang-format off
 
+// clang-format off
+
 /*
  * STM32F7xx drivers configuration.
  * The following settings override the default settings present in
@@ -359,7 +361,8 @@
 #define STM32_SPI_SPI4_IRQ_PRIORITY    10
 #define STM32_SPI_SPI5_IRQ_PRIORITY    10
 #define STM32_SPI_SPI6_IRQ_PRIORITY    10
-#define STM32_SPI_DMA_ERROR_HOOK(spip) osalSysHalt("DMA failure")
+#define SPI_DRIVER_EXT_FIELDS volatile bool dmaError;
+#define STM32_SPI_DMA_ERROR_HOOK(spip) (spip)->dmaError = true
 
 /*
  * ST driver system settings.
@@ -370,7 +373,7 @@
 /*
  * TRNG driver system settings.
  */
-#define STM32_TRNG_USE_RNG1 FALSE
+#define STM32_TRNG_USE_RNG1             TRUE
 
 /*
  * UART driver system settings.
@@ -439,5 +442,7 @@
 #include "mcuconf_nf.h"
 
 #endif /* MCUCONF_H */
+
+// clang-format on
 
 // clang-format on
