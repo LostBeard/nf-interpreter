@@ -830,9 +830,20 @@ static const CLR_RT_MethodHandler method_lookup[] =
     nullptr,
     nullptr,
     Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::Write___STATIC__VOID__STRING__U2__U2__U2__U2__nanoFrameworkUIFont__U4__U4,
+    Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::Sleep___STATIC__VOID,
+    Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::Wake___STATIC__VOID,
+    Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::SetBrightness___STATIC__VOID__U1,
     Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::NativeChangeOrientation___STATIC__BOOLEAN__nanoFrameworkUIDisplayOrientation,
     Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::NativeInitSpi___STATIC__U4__nanoFrameworkUISpiConfiguration__nanoFrameworkUIScreenConfiguration__U4,
     Library_nanoFramework_Graphics_nanoFramework_UI_DisplayControl::NativeInitI2c___STATIC__U4__nanoFrameworkUII2cConfiguration__nanoFrameworkUIScreenConfiguration__U4,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
     nullptr,
     nullptr,
     nullptr,
@@ -1054,7 +1065,7 @@ static const CLR_RT_MethodHandler method_lookup[] =
 const CLR_RT_NativeAssemblyData g_CLR_AssemblyNative_nanoFramework_Graphics =
 {
     "nanoFramework.Graphics",
-    0x3C3B8810,
+    0x3C36BEBF,
     method_lookup,
     { 100, 2, 0, 0 }
 };
