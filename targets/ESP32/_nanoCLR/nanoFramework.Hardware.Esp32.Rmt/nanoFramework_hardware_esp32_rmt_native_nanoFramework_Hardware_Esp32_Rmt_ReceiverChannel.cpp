@@ -45,7 +45,10 @@ static HRESULT RXSetDemodulation(rmt_channel_handle_t rx_chan, CLR_RT_HeapBlock 
         err = rmt_apply_carrier(rx_chan, &rx_carrier_cfg);
         NANOCLR_CHECK_HRESULT(RmtChannel::RmtMapEspErrToClrErr(err));
 #else
-        NANOCLR_SET_AND_LEAVE(CLR_E_NOT_SUPPORTED);
+        // The base ESP32 RMT has no RX carrier demodulator. The managed API documents this setting as
+        // "not available on the base ESP32 target and will be ignored", so ignore it rather than failing
+        // the whole channel (which broke every receiver whose settings left demodulation enabled).
+        NANOCLR_SET_AND_LEAVE(S_OK);
 #endif
     }
 

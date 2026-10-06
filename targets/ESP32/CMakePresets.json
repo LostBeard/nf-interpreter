@@ -27,6 +27,19 @@
             }
         },
         {
+            "name": "MINIROVER_ESP32",
+            "inherits": [
+                "xtensa-esp32-preset",
+                "user-tools-repos",
+                "user-prefs"
+            ],
+            "hidden": false,
+            "cacheVariables": {
+                "TARGET_NAME": "${presetName}",
+                "NF_TARGET_DEFCONFIG": "targets/ESP32/defconfig/MINIROVER_ESP32_defconfig"
+            }
+        },
+        {
             "name": "ESP32_PSRAM_REV3",
             "inherits": [
                 "xtensa-esp32-preset",
@@ -515,6 +528,12 @@
             "name": "ESP32_PSRAM_REV0",
             "displayName": "ESP32_PSRAM_REV0",
             "configurePreset": "ESP32_PSRAM_REV0"
+        },
+        {
+            "inherits": "base-user",
+            "name": "MINIROVER_ESP32",
+            "displayName": "MINIROVER_ESP32",
+            "configurePreset": "MINIROVER_ESP32"
         },
         {
             "inherits": "base-user",
