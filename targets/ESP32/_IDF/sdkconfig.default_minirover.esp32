@@ -104,3 +104,43 @@ CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_SVC_GAP_DEVICE_NAME="MiniRover"
 CONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=10
 CONFIG_BT_NIMBLE_TRANSPORT_EVT_COUNT=20
+
+# Camera head (esp32-camera, vendored in MiniRover firmware/native/components): only the two sensors Freenove ships.
+CONFIG_OV2640_SUPPORT=y
+CONFIG_GC0308_SUPPORT=y
+CONFIG_OV7670_SUPPORT=n
+CONFIG_OV7725_SUPPORT=n
+CONFIG_NT99141_SUPPORT=n
+CONFIG_OV3660_SUPPORT=n
+CONFIG_OV3640_SUPPORT=n
+CONFIG_OV5640_SUPPORT=n
+CONFIG_GC2145_SUPPORT=n
+CONFIG_GC032A_SUPPORT=n
+CONFIG_BF3005_SUPPORT=n
+CONFIG_BF20A6_SUPPORT=n
+CONFIG_SC101IOT_SUPPORT=n
+CONFIG_SC030IOT_SUPPORT=n
+CONFIG_SC031GS_SUPPORT=n
+CONFIG_HM1055_SUPPORT=n
+CONFIG_HM0360_SUPPORT=n
+CONFIG_MEGA_CCM_SUPPORT=n
+# nanoFramework's I2C uses the LEGACY driver on port 0; IDF aborts if legacy and new drivers are mixed.
+CONFIG_SCCB_HARDWARE_I2C_DRIVER_LEGACY=y
+CONFIG_SCCB_HARDWARE_I2C_PORT1=y
+CONFIG_CAMERA_NO_AFFINITY=y
+# IRAM: the camera's DMA/VSYNC interrupt code overflowed iram0 by 908 bytes. FreeRTOS functions that are not called
+# from cache-disabled contexts move to flash (IDF-supported); WiFi IRAM optimisations were already off.
+CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=y
+
+# Internal RAM budget (measured 2026-10-06, internal free: 74 KB after boot, 31 KB after the camera, 2 KB after BLE,
+# then WebRTC could not start). PSRAM had 276 KB spare. Move what can live in PSRAM there:
+# - NimBLE host allocations to PSRAM; one BLE connection is all setup needs.
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL=n
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BTDM_CTRL_BLE_MAX_CONN=1
+# - plain malloc() of 4 KB or more goes to PSRAM (default 16 KB kept libpeer/mbedTLS/NimBLE buffers internal);
+#   drivers that need internal or DMA memory ask for it explicitly with heap_caps_malloc.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+# - camera DMA line buffers 16 KB -> 8 KB (internal, DMA-capable).
+CONFIG_CAMERA_DMA_BUFFER_SIZE_MAX=8192
