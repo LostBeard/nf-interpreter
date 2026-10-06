@@ -189,6 +189,12 @@ macro(ParseInteropAssemblies)
     # check if there are any Interop assemblies to be added
     if(NF_INTEROP_ASSEMBLIES)
 
+        # Interop assemblies kept OUTSIDE nf-interpreter: NF_INTEROP_SEARCH_PATHS is a CMake list of folders that
+        # contain FindINTEROP-<namespace>.cmake modules (which locate their sources relative to themselves).
+        foreach(interopSearchPath ${NF_INTEROP_SEARCH_PATHS})
+            list(APPEND CMAKE_MODULE_PATH ${interopSearchPath})
+        endforeach()
+
         # need to split define containing assembly namespaces
         # for Windows buids this is a string with the namespaces separated by an whitespace
         # e.g.: "NF_INTEROP_ASSEMBLIES": "Assembly1_Namespace Assembly2_Namespace"

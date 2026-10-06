@@ -594,6 +594,18 @@ macro(nf_add_idf_as_library)
     
     include(${IDF_PATH_CMAKED}/tools/cmake/idf.cmake)
 
+    # Extra IDF components from OUTSIDE nf-interpreter (CMake list of component directories; each directory name is
+    # the component name). Registered here, AFTER idf.cmake, because IDF lets a component added later override one of
+    # the same name added earlier: a project can supply its own build of an IDF/registry component (e.g. a patched
+    # libpeer) without editing the shared IDF install.
+    set(NF_EXTRA_IDF_COMPONENT_NAMES "")
+    foreach(extraComponentDir ${NF_EXTRA_IDF_COMPONENT_DIRS})
+        get_filename_component(extraComponentName ${extraComponentDir} NAME)
+        idf_build_component(${extraComponentDir})
+        list(APPEND NF_EXTRA_IDF_COMPONENT_NAMES ${extraComponentName})
+        message(STATUS "Extra IDF component '${extraComponentName}' from ${extraComponentDir}")
+    endforeach()
+
     # if needed, "fix" the reported version so it doesn't show '-dirty'
     # this is because we could be deleting some files and tweaking others in the IDF
     get_property(MY_IDF_VER TARGET __idf_build_target PROPERTY IDF_VER)
@@ -693,6 +705,14 @@ macro(nf_add_idf_as_library)
         idf::srtp
         idf::libpeer
     )
+
+    # extra components from NF_EXTRA_IDF_COMPONENT_DIRS (overrides are already in the lists above)
+    foreach(extraComponentName ${NF_EXTRA_IDF_COMPONENT_NAMES})
+        if(NOT extraComponentName IN_LIST IDF_COMPONENTS_TO_ADD)
+            list(APPEND IDF_COMPONENTS_TO_ADD ${extraComponentName})
+            list(APPEND IDF_LIBRARIES_TO_ADD idf::${extraComponentName})
+        endif()
+    endforeach()
 
     # Needed for remote Wifi module on P4 boards
     if(${TARGET_SERIES_SHORT} STREQUAL "esp32p4")
