@@ -3,6 +3,8 @@
 # The CH340C overruns at the stock 921600 wire-protocol baud (bytes lost device->host, measured 2026-10-06);
 # 460800 is clean. CRC32 on so any residual corruption is detected and retried instead of misparsed.
 CONFIG_API_HARDWARE_ESP32=y
+# BLE: WiFi provisioning + pairing from the MiniRover web app (Web Bluetooth). Only started in setup mode.
+CONFIG_API_NANOFRAMEWORK_DEVICE_BLUETOOTH=y
 CONFIG_API_SYSTEM_DEVICE_ADC=y
 CONFIG_API_SYSTEM_DEVICE_DAC=y
 CONFIG_API_SYSTEM_DEVICE_GPIO=y
