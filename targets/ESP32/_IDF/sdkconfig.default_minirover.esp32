@@ -50,7 +50,11 @@ CONFIG_LWIP_MAX_SOCKETS=16
 CONFIG_LWIP_SO_LINGER=y
 CONFIG_LWIP_SO_RCVBUF=y
 CONFIG_LWIP_DHCP_OPTIONS_LEN=80
-CONFIG_LWIP_DHCPS=n
+# MiniRover: the car's own access point (setup mode, play mode) must hand out addresses. Upstream nanoFramework
+# turns ESP-IDF's DHCP server off and leaves it to a managed server; the native one costs no CLR time or heap.
+# Measured: with it off, a PC joined the car's WPA2 network but never got an address (169.254.x).
+CONFIG_LWIP_DHCPS=y
+CONFIG_LWIP_DHCPS_MAX_STATION_NUM=4
 CONFIG_LWIP_IPV6=y
 CONFIG_LWIP_MAX_LISTENING_TCP=8
 CONFIG_LWIP_SNTP_MAX_SERVERS=2
@@ -144,3 +148,7 @@ CONFIG_BTDM_CTRL_BLE_MAX_CONN=1
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
 # - camera DMA line buffers 16 KB -> 8 KB (internal, DMA-capable).
 CONFIG_CAMERA_DMA_BUFFER_SIZE_MAX=8192
+# - task stacks in PSRAM for tasks that never run with the flash cache off (the WebRTC pump, 16 KB): play mode keeps
+#   BLE on beside the session, and the pump's internal stack left 4 KB internal free (WiFi then dropped packets).
+CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
+

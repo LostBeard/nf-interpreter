@@ -139,6 +139,23 @@ static void compose_esp32_hostname()
 //
 // Network event loop handler
 //
+// MiniRover: the soft AP's DHCP server. esp_netif_start() starts it only if the AP interface is already up at that
+// moment, and otherwise leaves it in "init" for good (measured on a MINIROVER_ESP32 car: AP running, a PC associated,
+// esp_netif_dhcps_get_status = ESP_NETIF_DHCP_INIT, the PC never got an address). Start it when the AP starts and
+// again when a station joins, by when the interface is certainly up. Needs CONFIG_LWIP_DHCPS=y.
+static void EnsureApDhcpServer()
+{
+#if defined(CONFIG_LWIP_DHCPS) && CONFIG_LWIP_DHCPS
+    esp_netif_t *apNetif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    esp_netif_dhcp_status_t status = ESP_NETIF_DHCP_INIT;
+    if (apNetif != NULL && esp_netif_dhcps_get_status(apNetif, &status) == ESP_OK && status != ESP_NETIF_DHCP_STARTED)
+    {
+        esp_err_t ec = esp_netif_dhcps_start(apNetif);
+        ets_printf("AP DHCP server start: %d\n", ec);
+    }
+#endif
+}
+
 static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     esp_err_t result;
@@ -257,6 +274,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 
             // Wireless AP events
             case WIFI_EVENT_AP_START:
+                EnsureApDhcpServer();
                 PostAvailabilityOn(IDF_WIFI_AP_DEF);
 #ifdef PRINT_NET_EVENT
                 ets_printf("WIFI_EVENT_AP_START\n");
@@ -274,6 +292,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
                 // access STA connected event
                 apConnectedEvent = (wifi_event_ap_staconnected_t *)event_data;
                 stationIndex = apConnectedEvent->aid - 1;
+                EnsureApDhcpServer();
                 Network_Interface_Add_Station(stationIndex, apConnectedEvent->mac);
 
                 // Post the Network interface + Client ID in top 8 bits
