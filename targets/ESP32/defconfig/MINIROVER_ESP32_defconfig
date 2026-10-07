@@ -1,5 +1,5 @@
 # defconfig for MINIROVER_ESP32 (Freenove FNK0053 4WD car: ESP32-WROVER + CH340C)
-# Based on ESP32_PSRAM_REV0 (runs on every ESP32 revision).
+# Based on ESP32_PSRAM_REV0, built for ESP32 revision 3+ only (sdkconfig.default_minirover.esp32: speed).
 # The CH340C overruns at the stock 921600 wire-protocol baud (bytes lost device->host, measured 2026-10-06);
 # 460800 is clean. CRC32 on so any residual corruption is detected and retried instead of misparsed.
 CONFIG_API_HARDWARE_ESP32=y

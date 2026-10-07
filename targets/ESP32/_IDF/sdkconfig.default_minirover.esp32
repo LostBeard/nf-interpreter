@@ -152,3 +152,19 @@ CONFIG_CAMERA_DMA_BUFFER_SIZE_MAX=8192
 #   BLE on beside the session, and the pump's internal stack left 4 KB internal free (WiFi then dropped packets).
 CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
 
+
+# WebRTC DTLS: ChaCha20-Poly1305. The ESP32 has no GCM hardware; AES-GCM's software GHASH took ~3 ms per
+# 1200-byte video datagram on the car while streaming (measured 2026-10-07). libpeer prefers ChaCha20 when present.
+CONFIG_MBEDTLS_CHACHA20_C=y
+CONFIG_MBEDTLS_POLY1305_C=y
+CONFIG_MBEDTLS_CHACHAPOLY_C=y
+
+# Speed (measured 2026-10-07 on the car while streaming video, both cores were ~95% busy):
+# - ESP32 revision 3 and later only. Drops the PSRAM cache workaround that rev 0/1 chips need (a memory barrier after
+#   PSRAM stores in all code). Freenove's WROVER-E kits are rev 3; an older WROVER-B (rev 1) board will not boot this.
+# - -O2 instead of -Os. Together: AES-GCM per video datagram 0.9 -> 0.52 ms, video 12 -> 14 fps.
+CONFIG_ESP32_REV_MIN_3=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# - PSRAM at 80 MHz (flash already runs at 80 MHz): 320x240 video 16.3 -> 19.3 fps; the managed heap lives in PSRAM,
+#   so the interpreter got faster too (idle CPU 26% -> 18% of a core).
+CONFIG_SPIRAM_SPEED_80M=y
