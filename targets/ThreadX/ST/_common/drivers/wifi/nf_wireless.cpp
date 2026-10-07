@@ -366,7 +366,9 @@ int NF_Wireless_Open(HAL_Configuration_NetworkInterface *config)
     }
 
     // Connect if Auto connect and we have an SSID
-    if ((wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_AutoConnect) &&
+    // AutoConnect is (4 | Enable): test the whole flag, or an Enable-only station counts as auto-connecting.
+    if (((wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_AutoConnect) ==
+         Wireless80211Configuration_ConfigurationOptions_AutoConnect) &&
         (hal_strlen_s((const char *)wirelessConfig->Ssid) > 0))
     {
         // request to connect to WiFi

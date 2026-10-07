@@ -371,8 +371,13 @@ int NF_ESP32_Wireless_Open(HAL_Configuration_NetworkInterface *config)
         return SOCK_SOCKET_ERROR;
     }
 
-    // Connect if Auto connect and we have an SSID
-    if ((wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_AutoConnect) &&
+    // Connect if Auto connect and we have an SSID.
+    // MiniRover: compare the WHOLE flag. AutoConnect is (4 | Enable) and SmartConfig is (8 | Enable), so a plain
+    // `Options & AutoConnect` is true for a station that is only Enabled, and it connected to the saved network
+    // anyway (measured: a car whose station was set to Enable only, for scanning beside its own access point, joined
+    // the home network at boot).
+    if (((wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_AutoConnect) ==
+         Wireless80211Configuration_ConfigurationOptions_AutoConnect) &&
         (hal_strlen_s((const char *)wirelessConfig->Ssid) > 0))
     {
         NF_ESP32_Wireless_Start_Connect(wirelessConfig);
@@ -389,7 +394,8 @@ int NF_ESP32_Wireless_Open(HAL_Configuration_NetworkInterface *config)
 // ESP32-P4 doesn't currently have smartconfig support so disable
 #if !defined(CONFIG_SOC_WIRELESS_HOST_SUPPORTED)
     if (okToStartSmartConnect &&
-        (wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_SmartConfig))
+        ((wirelessConfig->Options & Wireless80211Configuration_ConfigurationOptions_SmartConfig) ==
+         Wireless80211Configuration_ConfigurationOptions_SmartConfig))
     {
         // Start Smart config (if enabled)
         NF_ESP32_Start_wifi_smart_config();
