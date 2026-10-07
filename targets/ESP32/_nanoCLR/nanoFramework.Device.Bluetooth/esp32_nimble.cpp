@@ -194,6 +194,14 @@ int Esp32GapEvent(struct ble_gap_event *event, void *arg)
                     event->connect.conn_handle,
                     event->connect.status);
             }
+            else
+            {
+                // MiniRover: a failed connection attempt also ends connectable advertising (NimBLE's bleprph
+                // example resumes it here). Without this the device stopped advertising for good: a MiniRover car
+                // in play mode became unreachable over BLE after a PC's connection attempt failed ("Unreachable"),
+                // until it was restarted.
+                Esp32BleStartAdvertise(con);
+            }
             break;
 
         case BLE_GAP_EVENT_DISCONNECT:
